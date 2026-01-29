@@ -3,7 +3,7 @@
  * Full Digital Audio Workstation with BeatBox-to-MIDI conversion
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useProjectStore } from './stores/projectStore';
 import { useTransportStore } from './stores/transportStore';
@@ -74,6 +74,12 @@ const App: React.FC = () => {
     setIsPlaying(transportState === 'playing' || transportState === 'recording');
   }, [transportState, setIsPlaying]);
 
+  // Use ref to track current tick without stale closure issues
+  const tickRef = useRef(currentTick);
+  useEffect(() => {
+    tickRef.current = currentTick;
+  }, [currentTick]);
+
   // Playback position update loop
   useEffect(() => {
     if (transportState !== 'playing' && transportState !== 'recording') return;
@@ -85,7 +91,9 @@ const App: React.FC = () => {
       const deltaMs = currentTime - lastTime;
       const deltaTicks = (deltaMs / 1000) * (project.bpm / 60) * TICKS_PER_BEAT;
 
-      setCurrentTick(currentTick + deltaTicks);
+      const newTick = tickRef.current + deltaTicks;
+      tickRef.current = newTick;
+      setCurrentTick(newTick);
       lastTime = currentTime;
 
       animationFrameId = requestAnimationFrame(updatePosition);
@@ -96,7 +104,7 @@ const App: React.FC = () => {
     return () => {
       cancelAnimationFrame(animationFrameId);
     };
-  }, [transportState, project.bpm]);
+  }, [transportState, project.bpm, setCurrentTick]);
 
   // Keyboard shortcuts
   useEffect(() => {
