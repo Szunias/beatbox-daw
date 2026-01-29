@@ -1,0 +1,80 @@
+{
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "devPath": "http://localhost:1420",
+    "distDir": "../dist"
+  },
+  "package": {
+    "productName": "BeatBox to MIDI",
+    "version": "0.1.0"
+  },
+  "tauri": {
+    "allowlist": {
+      "all": false,
+      "shell": {
+        "all": false,
+        "open": true
+      },
+      "dialog": {
+        "all": true,
+        "save": true
+      },
+      "fs": {
+        "all": false,
+        "writeFile": true,
+        "scope": ["$DOCUMENT/*", "$DOWNLOAD/*"]
+      }
+    },
+    "bundle": {
+      "active": true,
+      "category": "Music",
+      "copyright": "",
+      "deb": {
+        "depends": []
+      },
+      "externalBin": [],
+      "icon": [
+        "icons/32x32.png",
+        "icons/128x128.png",
+        "icons/128x128@2x.png",
+        "icons/icon.icns",
+        "icons/icon.ico"
+      ],
+      "identifier": "com.beatbox.midi",
+      "longDescription": "Desktop application that converts beatbox and vocal percussion sounds into MIDI drum tracks in real-time using machine learning.",
+      "macOS": {
+        "entitlements": null,
+        "exceptionDomain": "",
+        "frameworks": [],
+        "providerShortName": null,
+        "signingIdentity": null
+      },
+      "resources": [],
+      "shortDescription": "Beatbox to MIDI converter",
+      "targets": "all",
+      "windows": {
+        "certificateThumbprint": null,
+        "digestAlgorithm": "sha256",
+        "timestampUrl": ""
+      }
+    },
+    "security": {
+      "csp": null
+    },
+    "updater": {
+      "active": false
+    },
+    "windows": [
+      {
+        "fullscreen": false,
+        "height": 700,
+        "resizable": true,
+        "title": "BeatBox to MIDI",
+        "width": 1000,
+        "minWidth": 800,
+        "minHeight": 600
+      }
+    ]
+  }
+}

@@ -1,0 +1,60 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+*.pyo
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+
+# Build outputs
+dist/
+build/
+target/
+*.egg-info/
+.eggs/
+
+# Tauri
+src-tauri/target/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Model weights (large files)
+engine/classifier/weights/*.pt
+!engine/classifier/weights/.gitkeep
+
+# Training data
+training/dataset/**/*.wav
+!training/dataset/.gitkeep
+
+# MIDI output files
+*.mid
+*.midi
+
+# Audio recordings
+recordings/
