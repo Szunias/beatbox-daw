@@ -13,7 +13,8 @@ import { TrackHeader } from './TrackHeader';
 import { Playhead } from './Playhead';
 import { TICKS_PER_BEAT } from '../../types/project';
 
-const TRACK_HEADER_WIDTH = 180;
+const trackHeaderWidth_DESKTOP = 180;
+const trackHeaderWidth_MOBILE = 70;
 const TRACK_HEIGHT = 70;
 const TIME_RULER_HEIGHT = 30;
 
@@ -24,22 +25,28 @@ interface TimelineProps {
 export const Timeline: React.FC<TimelineProps> = ({ height = 400 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(800);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+
+  const trackHeaderWidth = isMobile ? trackHeaderWidth_MOBILE : trackHeaderWidth_DESKTOP;
 
   const { project, addTrack, selectedTrackId } = useProjectStore();
   const { seekTo, currentTick } = useTransportStore();
   const { timelineViewport, scrollTimeline, zoomTimeline, setTimelineViewport } = useUIStore();
 
-  // Update container width on resize
+  // Update container width and mobile state on resize
   useEffect(() => {
-    const updateWidth = () => {
+    const updateDimensions = () => {
+      const mobile = window.innerWidth < 768;
+      setIsMobile(mobile);
+      const headerWidth = mobile ? trackHeaderWidth_MOBILE : trackHeaderWidth_DESKTOP;
       if (containerRef.current) {
-        setContainerWidth(containerRef.current.clientWidth - TRACK_HEADER_WIDTH);
+        setContainerWidth(containerRef.current.clientWidth - headerWidth);
       }
     };
 
-    updateWidth();
-    window.addEventListener('resize', updateWidth);
-    return () => window.removeEventListener('resize', updateWidth);
+    updateDimensions();
+    window.addEventListener('resize', updateDimensions);
+    return () => window.removeEventListener('resize', updateDimensions);
   }, []);
 
   // Handle scroll and zoom
@@ -52,7 +59,7 @@ export const Timeline: React.FC<TimelineProps> = ({ height = 400 }) => {
         const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
         const rect = containerRef.current?.getBoundingClientRect();
         if (rect) {
-          const relativeX = e.clientX - rect.left - TRACK_HEADER_WIDTH;
+          const relativeX = e.clientX - rect.left - trackHeaderWidth;
           const tickRange = timelineViewport.endTick - timelineViewport.startTick;
           const centerTick =
             timelineViewport.startTick + (relativeX / containerWidth) * tickRange;
@@ -70,7 +77,7 @@ export const Timeline: React.FC<TimelineProps> = ({ height = 400 }) => {
         scrollTimeline(scrollAmount);
       }
     },
-    [timelineViewport, containerWidth, zoomTimeline, scrollTimeline]
+    [timelineViewport, containerWidth, zoomTimeline, scrollTimeline, trackHeaderWidth]
   );
 
   // Handle click on timeline to seek
@@ -79,14 +86,14 @@ export const Timeline: React.FC<TimelineProps> = ({ height = 400 }) => {
       const rect = containerRef.current?.getBoundingClientRect();
       if (!rect) return;
 
-      const relativeX = e.clientX - rect.left - TRACK_HEADER_WIDTH;
+      const relativeX = e.clientX - rect.left - trackHeaderWidth;
       if (relativeX < 0) return;
 
       const tickRange = timelineViewport.endTick - timelineViewport.startTick;
       const clickedTick = timelineViewport.startTick + (relativeX / containerWidth) * tickRange;
       seekTo(Math.max(0, Math.round(clickedTick)));
     },
-    [timelineViewport, containerWidth, seekTo]
+    [timelineViewport, containerWidth, seekTo, trackHeaderWidth]
   );
 
   // Handle add track button
@@ -118,7 +125,7 @@ export const Timeline: React.FC<TimelineProps> = ({ height = 400 }) => {
         {/* Empty corner */}
         <div
           style={{
-            width: TRACK_HEADER_WIDTH,
+            width: trackHeaderWidth,
             backgroundColor: 'var(--bg-tertiary)',
             borderBottom: '1px solid rgba(255,255,255,0.1)',
             display: 'flex',
@@ -174,7 +181,7 @@ export const Timeline: React.FC<TimelineProps> = ({ height = 400 }) => {
         {/* Track headers */}
         <div
           style={{
-            width: TRACK_HEADER_WIDTH,
+            width: trackHeaderWidth,
             overflowY: 'auto',
             overflowX: 'hidden',
             backgroundColor: 'var(--bg-secondary)',

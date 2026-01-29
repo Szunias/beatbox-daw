@@ -494,64 +494,128 @@ button:active:not(:disabled) {
   }
 
   .app.daw-layout {
-    padding: 8px;
-    gap: 8px;
+    padding: 6px;
+    gap: 6px;
     height: auto;
     min-height: 100vh;
   }
 
   /* Header mobile */
   .header {
-    flex-direction: column;
+    flex-direction: row;
+    flex-wrap: wrap;
     gap: 8px;
-    padding: 12px;
+    padding: 8px 12px;
+    justify-content: space-between;
   }
 
   .header h1 {
-    font-size: 1.2rem;
+    font-size: 1rem;
+  }
+
+  .header > div {
+    gap: 8px !important;
+  }
+
+  .header button {
+    padding: 4px 8px !important;
+    font-size: 0.7rem !important;
+    min-height: 32px !important;
+    min-width: auto !important;
   }
 
   .status-indicator {
-    font-size: 0.75rem;
-    padding: 4px 10px;
+    font-size: 0.7rem;
+    padding: 4px 8px;
   }
 
-  /* Toolbar mobile */
+  /* Toolbar mobile - compact layout */
   .toolbar {
     flex-wrap: wrap;
-    gap: 8px;
-    padding: 8px;
-  }
-
-  .transport-controls {
-    order: 1;
-    width: 100%;
+    gap: 6px !important;
+    padding: 6px 8px !important;
     justify-content: center;
   }
 
+  /* Hide dividers on mobile */
+  .toolbar > div[style*="width: 1px"] {
+    display: none !important;
+  }
+
+  /* Transport controls - priority on mobile */
+  .transport-controls {
+    order: -1;
+    width: 100%;
+    justify-content: center !important;
+    gap: 8px !important;
+    padding-bottom: 6px;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+  }
+
+  .transport-controls > div:first-child {
+    gap: 6px !important;
+  }
+
   .transport-controls button {
-    min-width: 44px;
-    min-height: 44px;
-    padding: 10px;
+    width: 40px !important;
+    height: 40px !important;
+    min-width: 40px !important;
+    min-height: 40px !important;
+  }
+
+  /* Position display smaller on mobile */
+  .transport-controls > div[style*="fontFamily: monospace"] {
+    font-size: 0.9rem !important;
+    padding: 4px 8px !important;
+    min-width: 85px !important;
+  }
+
+  /* Hide some toolbar elements on very small screens */
+  .toolbar-section-tools,
+  .toolbar-section-snap select {
+    display: none;
+  }
+
+  /* BPM and time signature compact */
+  .toolbar label {
+    display: none !important;
+  }
+
+  .toolbar input[type="number"] {
+    width: 50px !important;
+    padding: 4px 6px !important;
+    font-size: 0.85rem !important;
+  }
+
+  .toolbar select {
+    padding: 4px !important;
+    font-size: 0.8rem !important;
+    min-height: 32px !important;
+  }
+
+  /* Project name - hide on mobile */
+  .toolbar > input[type="text"] {
+    display: none !important;
   }
 
   /* Timeline mobile */
   .timeline-container {
-    min-height: 200px;
+    min-height: 180px;
   }
 
   .track-header {
-    min-width: 80px;
-    font-size: 0.75rem;
+    min-width: 70px !important;
+    max-width: 70px !important;
+    font-size: 0.7rem !important;
   }
 
   /* Piano roll mobile */
   .piano-roll-container {
-    min-height: 180px;
+    min-height: 150px;
   }
 
   .piano-keys {
-    min-width: 40px;
+    min-width: 35px;
   }
 
   /* Mixer mobile */
@@ -560,39 +624,47 @@ button:active:not(:disabled) {
   }
 
   .mixer-channel {
-    min-width: 60px;
+    min-width: 55px;
   }
 
   /* Beatbox panel mobile */
   .beatbox-panel {
-    padding: 10px;
+    padding: 8px;
   }
 
   .beatbox-panel button {
-    min-height: 44px;
-    font-size: 0.85rem;
+    min-height: 40px;
+    font-size: 0.8rem;
   }
 
-  /* Touch-friendly buttons */
+  /* Touch-friendly buttons - but not too big */
   button {
-    min-height: 44px;
-    min-width: 44px;
+    min-height: 36px;
   }
 
   /* Stats grid mobile */
   .stats-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .stat-item {
+    padding: 8px;
+  }
+
+  .stat-value {
+    font-size: 1.2rem;
   }
 
   /* Events list mobile */
   .events-list {
-    max-height: 150px;
+    max-height: 120px;
   }
 
   /* Record button mobile */
   .record-button {
-    padding: 16px;
-    font-size: 1rem;
+    padding: 14px;
+    font-size: 0.95rem;
   }
 
   /* Panel toggles mobile */
@@ -609,34 +681,75 @@ button:active:not(:disabled) {
   }
 
   .header {
-    padding: 8px;
+    padding: 6px 8px;
   }
 
   .header h1 {
-    font-size: 1rem;
+    font-size: 0.9rem;
+  }
+
+  /* Hide settings button text on very small screens */
+  .header button {
+    padding: 4px 6px !important;
   }
 
   .toolbar {
-    padding: 6px;
+    padding: 4px !important;
+    gap: 4px !important;
+  }
+
+  .transport-controls {
+    gap: 6px !important;
+    padding-bottom: 4px;
   }
 
   .transport-controls button {
-    min-width: 40px;
-    min-height: 40px;
-    padding: 8px;
+    width: 36px !important;
+    height: 36px !important;
+    min-width: 36px !important;
+    min-height: 36px !important;
+  }
+
+  .transport-controls > div[style*="fontFamily: monospace"] {
+    font-size: 0.8rem !important;
+    padding: 3px 6px !important;
+    min-width: 75px !important;
+  }
+
+  /* Hide LOOP and CLICK buttons on very small screens */
+  .transport-controls > button {
+    display: none !important;
+  }
+
+  .toolbar input[type="number"] {
+    width: 45px !important;
   }
 
   .track-header {
-    min-width: 60px;
-    font-size: 0.7rem;
+    min-width: 55px !important;
+    max-width: 55px !important;
+    font-size: 0.65rem !important;
   }
 
   .beatbox-panel {
-    padding: 8px;
+    padding: 6px;
   }
 
   .mixer-channel {
-    min-width: 50px;
+    min-width: 45px;
+  }
+
+  /* Stats even more compact */
+  .stat-item {
+    padding: 6px;
+  }
+
+  .stat-value {
+    font-size: 1rem;
+  }
+
+  .stat-label {
+    font-size: 0.65rem;
   }
 }
 
