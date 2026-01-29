@@ -137,16 +137,57 @@ body {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
+.mixer-channel {
+  transition: all 0.15s ease;
+}
+
 .mixer-channel:hover {
   background-color: var(--bg-tertiary) !important;
+  transform: translateY(-2px);
 }
 
 .mixer-channel.selected {
-  box-shadow: 0 0 10px rgba(233, 69, 96, 0.3);
+  box-shadow: 0 0 15px rgba(233, 69, 96, 0.4);
+}
+
+.mixer-channel.master {
+  background-color: rgba(233, 69, 96, 0.1) !important;
 }
 
 .vu-meter {
   box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+/* Mixer range inputs */
+.mixer-channel input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+}
+
+.mixer-channel input[type="range"]::-webkit-slider-runnable-track {
+  background: var(--bg-tertiary);
+  border-radius: 4px;
+}
+
+.mixer-channel input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  background: var(--accent-primary);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.mixer-channel input[type="range"]::-moz-range-track {
+  background: var(--bg-tertiary);
+  border-radius: 4px;
+}
+
+.mixer-channel input[type="range"]::-moz-range-thumb {
+  background: var(--accent-primary);
+  border-radius: 4px;
+  border: none;
+  cursor: pointer;
 }
 
 /* === Toolbar === */
@@ -621,10 +662,25 @@ button:active:not(:disabled) {
   /* Mixer mobile */
   .mixer {
     overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
   }
 
   .mixer-channel {
-    min-width: 55px;
+    min-width: 60px;
+    padding: 6px !important;
+  }
+
+  .mixer-channel:hover {
+    transform: none;
+  }
+
+  .mixer-channel input[type="range"] {
+    height: 24px;
+  }
+
+  .mixer-channel input[type="range"]::-webkit-slider-thumb {
+    width: 24px;
+    height: 24px;
   }
 
   /* Beatbox panel mobile */
@@ -736,7 +792,13 @@ button:active:not(:disabled) {
   }
 
   .mixer-channel {
-    min-width: 45px;
+    min-width: 52px;
+    padding: 4px !important;
+    gap: 4px !important;
+  }
+
+  .mixer-channel input[type="range"] {
+    height: 22px;
   }
 
   /* Stats even more compact */
