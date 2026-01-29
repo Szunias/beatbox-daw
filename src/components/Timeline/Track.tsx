@@ -3,8 +3,8 @@
  * Renders a single track lane in the timeline with its clips
  */
 
-import React, { useMemo } from 'react';
-import { Track as TrackType, TICKS_PER_BEAT } from '../../types/project';
+import React, { useMemo, useCallback } from 'react';
+import { Track as TrackType, TICKS_PER_BEAT, createMidiClip } from '../../types/project';
 import { useUIStore } from '../../stores/uiStore';
 import { useProjectStore } from '../../stores/projectStore';
 import { Clip } from './Clip';
@@ -16,12 +16,47 @@ interface TrackProps {
 }
 
 export const Track: React.FC<TrackProps> = ({ track, height, width }) => {
-  const { timelineViewport } = useUIStore();
-  const { project } = useProjectStore();
+  const { timelineViewport, openPianoRoll, snapSettings } = useUIStore();
+  const { project, addClip } = useProjectStore();
   const { startTick, endTick } = timelineViewport;
 
   const tickRange = endTick - startTick;
   const pixelsPerTick = width / tickRange;
+
+  // Handle double-click to create new clip and open piano roll
+  const handleDoubleClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    // Only for MIDI/drum tracks
+    if (track.type !== 'midi' && track.type !== 'drum') return;
+
+    // Calculate tick position from click
+    const rect = e.currentTarget.getBoundingClientRect();
+    const relativeX = e.clientX - rect.left;
+    let clickTick = startTick + (relativeX / width) * tickRange;
+
+    // Snap to grid
+    if (snapSettings.enabled) {
+      const snapTicks = snapSettings.value === '1/1' ? TICKS_PER_BEAT * 4 :
+                        snapSettings.value === '1/2' ? TICKS_PER_BEAT * 2 :
+                        snapSettings.value === '1/4' ? TICKS_PER_BEAT :
+                        snapSettings.value === '1/8' ? TICKS_PER_BEAT / 2 :
+                        snapSettings.value === '1/16' ? TICKS_PER_BEAT / 4 :
+                        snapSettings.value === '1/32' ? TICKS_PER_BEAT / 8 : TICKS_PER_BEAT;
+      clickTick = Math.floor(clickTick / snapTicks) * snapTicks;
+    }
+
+    // Create new clip (1 bar duration)
+    const clipDuration = TICKS_PER_BEAT * 4;
+    const newClip = createMidiClip(
+      `New Clip`,
+      Math.max(0, clickTick),
+      clipDuration,
+      [],
+      track.color
+    );
+
+    addClip(track.id, newClip);
+    openPianoRoll(track.id, newClip.id);
+  }, [track.id, track.type, track.color, startTick, tickRange, width, snapSettings, addClip, openPianoRoll]);
 
   // Background grid
   const gridLines = useMemo(() => {
@@ -62,6 +97,7 @@ export const Track: React.FC<TrackProps> = ({ track, height, width }) => {
   return (
     <div
       className="track"
+      onDoubleClick={handleDoubleClick}
       style={{
         height,
         width,
