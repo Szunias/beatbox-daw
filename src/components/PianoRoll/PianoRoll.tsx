@@ -6,6 +6,7 @@
 import React, { useCallback, useRef, useState, useEffect } from 'react';
 import { useProjectStore } from '../../stores/projectStore';
 import { useUIStore } from '../../stores/uiStore';
+import { useAudioPreview } from '../../hooks/useAudioPreview';
 import { PianoKeys } from './PianoKeys';
 import { NoteGrid } from './NoteGrid';
 import { MidiClip, MidiNote, createMidiNote, TICKS_PER_BEAT, getSnapTicks } from '../../types/project';
@@ -129,11 +130,13 @@ export const PianoRoll: React.FC<PianoRollProps> = ({ height = 300 }) => {
     clearNoteSelection();
   }, [clearNoteSelection]);
 
+  // Audio preview
+  const { playNote } = useAudioPreview();
+
   // Handle key preview (play note when clicking on piano keys)
   const handleKeyClick = useCallback((pitch: number) => {
-    // TODO: Send MIDI note preview to engine
-    console.log('Preview note:', pitch);
-  }, []);
+    playNote(pitch, 0.5, 100);
+  }, [playNote]);
 
   // Handle delete key
   useEffect(() => {
