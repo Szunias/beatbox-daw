@@ -3,7 +3,7 @@
  * Main timeline/arrangement view containing all tracks and time ruler
  */
 
-import React, { useRef, useCallback, useEffect, useState } from 'react';
+import React, { useRef, useCallback, useEffect, useState, useMemo } from 'react';
 import { useProjectStore } from '../../stores/projectStore';
 import { useTransportStore } from '../../stores/transportStore';
 import { useUIStore } from '../../stores/uiStore';
@@ -12,6 +12,8 @@ import { Track } from './Track';
 import { TrackHeader } from './TrackHeader';
 import { Playhead } from './Playhead';
 import { TICKS_PER_BEAT } from '../../types/project';
+import { ContextMenu, MenuItem } from '../ContextMenu';
+import { useContextMenu } from '../../hooks/useContextMenu';
 
 const trackHeaderWidth_DESKTOP = 180;
 const trackHeaderWidth_MOBILE = 70;
@@ -29,9 +31,49 @@ export const Timeline: React.FC<TimelineProps> = ({ height = 400 }) => {
 
   const trackHeaderWidth = isMobile ? trackHeaderWidth_MOBILE : trackHeaderWidth_DESKTOP;
 
-  const { project, addTrack, selectedTrackId } = useProjectStore();
-  const { seekTo, currentTick } = useTransportStore();
+  const { project, addTrack, removeTrack, selectedTrackId, selectTrack } = useProjectStore();
+  const { seekTo, currentTick, stop } = useTransportStore();
   const { timelineViewport, scrollTimeline, zoomTimeline, setTimelineViewport } = useUIStore();
+
+  // Context menu
+  const { menuState, closeMenu, handlers: contextMenuHandlers } = useContextMenu();
+
+  // Build context menu items
+  const contextMenuItems: MenuItem[] = useMemo(() => {
+    const items: MenuItem[] = [
+      {
+        label: 'Add Drum Track',
+        icon: '🥁',
+        onClick: () => addTrack('drum'),
+      },
+      {
+        label: 'Add MIDI Track',
+        icon: '🎹',
+        onClick: () => addTrack('midi'),
+      },
+    ];
+
+    // Add track-specific options if a track is selected
+    if (selectedTrackId) {
+      items.push({ label: '', onClick: () => {}, divider: true });
+      items.push({
+        label: 'Delete Track',
+        icon: '🗑️',
+        onClick: () => {
+          removeTrack(selectedTrackId);
+        },
+      });
+    }
+
+    items.push({ label: '', onClick: () => {}, divider: true });
+    items.push({
+      label: 'Stop Playback',
+      icon: '⏹️',
+      onClick: () => stop(),
+    });
+
+    return items;
+  }, [addTrack, removeTrack, selectedTrackId, stop]);
 
   // Update container width and mobile state on resize
   useEffect(() => {
@@ -119,6 +161,7 @@ export const Timeline: React.FC<TimelineProps> = ({ height = 400 }) => {
         borderRadius: 8,
         overflow: 'hidden',
       }}
+      {...contextMenuHandlers}
     >
       {/* Top row: empty corner + time ruler */}
       <div style={{ display: 'flex', height: TIME_RULER_HEIGHT }}>
@@ -268,6 +311,16 @@ export const Timeline: React.FC<TimelineProps> = ({ height = 400 }) => {
           {/* TODO: Add loop region visualization */}
         </div>
       </div>
+
+      {/* Context Menu */}
+      {menuState.isOpen && (
+        <ContextMenu
+          x={menuState.x}
+          y={menuState.y}
+          items={contextMenuItems}
+          onClose={closeMenu}
+        />
+      )}
     </div>
   );
 };
