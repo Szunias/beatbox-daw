@@ -3,7 +3,7 @@
  * Single mixer channel with fader, pan, mute, solo, and VU meter
  */
 
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import { Track } from '../../types/project';
 import { useProjectStore } from '../../stores/projectStore';
 import { VUMeter } from './VUMeter';
@@ -25,8 +25,25 @@ export const Channel: React.FC<ChannelProps> = ({ track, level = 0, isMaster = f
   } = useProjectStore();
 
   const [isEditing, setIsEditing] = useState(false);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const isSelected = selectedTrackId === track.id;
+
+  // Responsive sizing
+  const channelWidth = isMobile ? 60 : (isMaster ? 90 : 80);
+  const faderHeight = isMobile ? 80 : 120;
+  const fontSize = {
+    name: isMobile ? '0.7rem' : '0.8rem',
+    label: isMobile ? '0.6rem' : '0.7rem',
+    value: isMobile ? '0.65rem' : '0.75rem',
+    button: isMobile ? '0.6rem' : '0.7rem',
+  };
 
   const handleVolumeChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -76,14 +93,16 @@ export const Channel: React.FC<ChannelProps> = ({ track, level = 0, isMaster = f
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
-        padding: '8px',
-        gap: '8px',
-        backgroundColor: isSelected ? 'var(--bg-tertiary)' : 'var(--bg-secondary)',
-        borderRadius: 6,
-        width: isMaster ? 80 : 70,
+        padding: isMobile ? '6px' : '10px',
+        gap: isMobile ? '6px' : '8px',
+        backgroundColor: isSelected ? 'var(--bg-tertiary)' : 'var(--bg-primary)',
+        borderRadius: 8,
+        width: channelWidth,
+        minWidth: channelWidth,
         cursor: 'pointer',
-        border: isSelected ? '1px solid var(--accent-primary)' : '1px solid transparent',
+        border: isSelected ? '2px solid var(--accent-primary)' : '2px solid var(--bg-tertiary)',
         transition: 'background-color 0.15s ease, border-color 0.15s ease',
+        flexShrink: 0,
       }}
     >
       {/* Channel name */}
@@ -91,16 +110,17 @@ export const Channel: React.FC<ChannelProps> = ({ track, level = 0, isMaster = f
         style={{
           width: '100%',
           textAlign: 'center',
-          fontSize: '0.7rem',
+          fontSize: fontSize.name,
           fontWeight: 600,
-          color: 'var(--text-primary)',
+          color: isMaster ? 'var(--accent-primary)' : 'var(--text-primary)',
           overflow: 'hidden',
           textOverflow: 'ellipsis',
           whiteSpace: 'nowrap',
+          padding: '2px 0',
         }}
         title={track.name}
       >
-        {track.name}
+        {isMaster ? 'MASTER' : track.name}
       </div>
 
       {/* Color indicator */}
@@ -115,22 +135,24 @@ export const Channel: React.FC<ChannelProps> = ({ track, level = 0, isMaster = f
 
       {/* Mute/Solo buttons */}
       {!isMaster && (
-        <div style={{ display: 'flex', gap: '4px' }}>
+        <div style={{ display: 'flex', gap: '4px', width: '100%', justifyContent: 'center' }}>
           <button
             onClick={(e) => {
               e.stopPropagation();
               handleMuteClick();
             }}
             style={{
-              width: 24,
-              height: 18,
+              flex: 1,
+              maxWidth: 32,
+              height: isMobile ? 22 : 24,
               border: 'none',
-              borderRadius: 3,
-              fontSize: '0.6rem',
+              borderRadius: 4,
+              fontSize: fontSize.button,
               fontWeight: 700,
               cursor: 'pointer',
-              backgroundColor: track.muted ? 'var(--warning)' : 'rgba(255,255,255,0.1)',
+              backgroundColor: track.muted ? 'var(--warning)' : 'var(--bg-tertiary)',
               color: track.muted ? 'var(--bg-primary)' : 'var(--text-secondary)',
+              transition: 'background-color 0.1s ease',
             }}
           >
             M
@@ -141,15 +163,17 @@ export const Channel: React.FC<ChannelProps> = ({ track, level = 0, isMaster = f
               handleSoloClick();
             }}
             style={{
-              width: 24,
-              height: 18,
+              flex: 1,
+              maxWidth: 32,
+              height: isMobile ? 22 : 24,
               border: 'none',
-              borderRadius: 3,
-              fontSize: '0.6rem',
+              borderRadius: 4,
+              fontSize: fontSize.button,
               fontWeight: 700,
               cursor: 'pointer',
-              backgroundColor: track.solo ? 'var(--success)' : 'rgba(255,255,255,0.1)',
+              backgroundColor: track.solo ? 'var(--success)' : 'var(--bg-tertiary)',
               color: track.solo ? 'var(--bg-primary)' : 'var(--text-secondary)',
+              transition: 'background-color 0.1s ease',
             }}
           >
             S
@@ -163,11 +187,12 @@ export const Channel: React.FC<ChannelProps> = ({ track, level = 0, isMaster = f
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
-          gap: '2px',
+          gap: '3px',
           width: '100%',
+          padding: '4px 0',
         }}
       >
-        <span style={{ fontSize: '0.6rem', color: 'var(--text-secondary)' }}>PAN</span>
+        <span style={{ fontSize: fontSize.label, color: 'var(--text-secondary)', fontWeight: 500 }}>PAN</span>
         <input
           type="range"
           min="-1"
@@ -182,12 +207,12 @@ export const Channel: React.FC<ChannelProps> = ({ track, level = 0, isMaster = f
           }}
           style={{
             width: '100%',
-            height: 6,
+            height: isMobile ? 20 : 8,
             cursor: 'pointer',
-            accentColor: track.color,
+            accentColor: isMaster ? 'var(--accent-primary)' : track.color,
           }}
         />
-        <span style={{ fontSize: '0.6rem', color: 'var(--text-secondary)' }}>
+        <span style={{ fontSize: fontSize.value, color: 'var(--text-primary)', fontFamily: 'monospace' }}>
           {formatPan(track.pan)}
         </span>
       </div>
@@ -196,13 +221,20 @@ export const Channel: React.FC<ChannelProps> = ({ track, level = 0, isMaster = f
       <div
         style={{
           display: 'flex',
-          gap: '6px',
-          alignItems: 'flex-end',
+          gap: '8px',
+          alignItems: 'stretch',
           flex: 1,
+          width: '100%',
+          justifyContent: 'center',
+          minHeight: faderHeight,
         }}
       >
         {/* VU Meter */}
-        <VUMeter level={level * track.volume * (track.muted ? 0 : 1)} height={100} width={10} />
+        <VUMeter
+          level={level * track.volume * (track.muted ? 0 : 1)}
+          height={faderHeight}
+          width={isMobile ? 8 : 12}
+        />
 
         {/* Volume fader */}
         <div
@@ -210,7 +242,8 @@ export const Channel: React.FC<ChannelProps> = ({ track, level = 0, isMaster = f
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
-            height: 100,
+            justifyContent: 'center',
+            height: faderHeight,
           }}
         >
           <input
@@ -228,10 +261,10 @@ export const Channel: React.FC<ChannelProps> = ({ track, level = 0, isMaster = f
             style={{
               writingMode: 'vertical-lr',
               direction: 'rtl',
-              width: 100,
-              height: 20,
+              width: faderHeight,
+              height: isMobile ? 24 : 28,
               cursor: 'pointer',
-              accentColor: track.color,
+              accentColor: isMaster ? 'var(--accent-primary)' : track.color,
             }}
           />
         </div>
@@ -240,12 +273,15 @@ export const Channel: React.FC<ChannelProps> = ({ track, level = 0, isMaster = f
       {/* Volume dB display */}
       <div
         style={{
-          backgroundColor: 'var(--bg-primary)',
-          padding: '2px 6px',
-          borderRadius: 3,
-          fontSize: '0.65rem',
+          backgroundColor: 'var(--bg-tertiary)',
+          padding: isMobile ? '3px 6px' : '4px 8px',
+          borderRadius: 4,
+          fontSize: fontSize.value,
           fontFamily: 'monospace',
-          color: 'var(--text-secondary)',
+          color: 'var(--text-primary)',
+          fontWeight: 500,
+          minWidth: isMobile ? 40 : 48,
+          textAlign: 'center',
         }}
       >
         {formatVolumeDb(track.volume)}
