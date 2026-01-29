@@ -4,41 +4,92 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { useWebSocket, AudioDevice } from '../../hooks/useWebSocket';
+import { AudioDevice } from '../../hooks/useWebSocket';
 
 interface AudioSettingsProps {
   onClose?: () => void;
+  isConnected: boolean;
+  devices: AudioDevice[];
+  listDevices: () => void;
+  setAudioDevice: (deviceId: number, type: 'input' | 'output') => void;
 }
 
-export const AudioSettings: React.FC<AudioSettingsProps> = ({ onClose }) => {
-  const {
-    isConnected,
-    devices,
-    listDevices,
-    setAudioDevice,
-    sendMessage,
-  } = useWebSocket();
+export const AudioSettings: React.FC<AudioSettingsProps> = ({
+  onClose,
+  isConnected,
+  devices,
+  listDevices,
+  setAudioDevice,
+}) => {
 
   const [inputDevices, setInputDevices] = useState<AudioDevice[]>([]);
   const [outputDevices, setOutputDevices] = useState<AudioDevice[]>([]);
   const [selectedInputId, setSelectedInputId] = useState<number | null>(null);
   const [selectedOutputId, setSelectedOutputId] = useState<number | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [browserDevices, setBrowserDevices] = useState<MediaDeviceInfo[]>([]);
 
-  // Request device list on mount and when connected
+  // Request device list from backend when connected
   useEffect(() => {
     if (isConnected) {
       listDevices();
     }
   }, [isConnected, listDevices]);
 
-  // Parse devices into input/output
+  // Fallback: Get devices from browser Web Audio API
   useEffect(() => {
-    const inputs = devices.filter(d => d.type === 'input' || d.type === 'both');
-    const outputs = devices.filter(d => d.type === 'output' || d.type === 'both');
-    setInputDevices(inputs);
-    setOutputDevices(outputs);
-  }, [devices]);
+    const getBrowserDevices = async () => {
+      try {
+        // Request permission first (needed for device labels)
+        await navigator.mediaDevices.getUserMedia({ audio: true })
+          .then(stream => stream.getTracks().forEach(track => track.stop()))
+          .catch(() => {}); // Ignore permission errors
+
+        const deviceList = await navigator.mediaDevices.enumerateDevices();
+        setBrowserDevices(deviceList.filter(d => d.kind === 'audioinput' || d.kind === 'audiooutput'));
+      } catch (e) {
+        console.log('Could not enumerate browser devices:', e);
+      }
+    };
+
+    // Only use browser API if not connected to backend
+    if (!isConnected) {
+      getBrowserDevices();
+    }
+  }, [isConnected]);
+
+  // Parse devices into input/output (from backend or browser)
+  useEffect(() => {
+    if (devices.length > 0) {
+      // Use backend devices
+      const inputs = devices.filter(d => d.type === 'input' || d.type === 'both');
+      const outputs = devices.filter(d => d.type === 'output' || d.type === 'both');
+      setInputDevices(inputs);
+      setOutputDevices(outputs);
+    } else if (browserDevices.length > 0) {
+      // Use browser devices as fallback
+      const inputs: AudioDevice[] = browserDevices
+        .filter(d => d.kind === 'audioinput')
+        .map((d, i) => ({
+          id: i,
+          name: d.label || `Microphone ${i + 1}`,
+          channels: 1,
+          sample_rate: 48000,
+          type: 'input' as const,
+        }));
+      const outputs: AudioDevice[] = browserDevices
+        .filter(d => d.kind === 'audiooutput')
+        .map((d, i) => ({
+          id: i + 100,
+          name: d.label || `Speaker ${i + 1}`,
+          channels: 2,
+          sample_rate: 48000,
+          type: 'output' as const,
+        }));
+      setInputDevices(inputs);
+      setOutputDevices(outputs);
+    }
+  }, [devices, browserDevices]);
 
   const handleRefresh = () => {
     setIsRefreshing(true);
@@ -128,7 +179,11 @@ export const AudioSettings: React.FC<AudioSettingsProps> = ({ onClose }) => {
           gap: '8px',
           marginBottom: '16px',
           padding: '8px',
-          backgroundColor: isConnected ? 'rgba(74, 222, 128, 0.1)' : 'rgba(248, 113, 113, 0.1)',
+          backgroundColor: isConnected
+            ? 'rgba(74, 222, 128, 0.1)'
+            : browserDevices.length > 0
+              ? 'rgba(251, 191, 36, 0.1)'
+              : 'rgba(248, 113, 113, 0.1)',
           borderRadius: 4,
         }}
       >
@@ -137,16 +192,28 @@ export const AudioSettings: React.FC<AudioSettingsProps> = ({ onClose }) => {
             width: 8,
             height: 8,
             borderRadius: '50%',
-            backgroundColor: isConnected ? '#4ade80' : '#f87171',
+            backgroundColor: isConnected
+              ? '#4ade80'
+              : browserDevices.length > 0
+                ? '#fbbf24'
+                : '#f87171',
           }}
         />
         <span
           style={{
             fontSize: '0.8rem',
-            color: isConnected ? '#4ade80' : '#f87171',
+            color: isConnected
+              ? '#4ade80'
+              : browserDevices.length > 0
+                ? '#fbbf24'
+                : '#f87171',
           }}
         >
-          {isConnected ? 'Engine Connected' : 'Engine Disconnected'}
+          {isConnected
+            ? 'Engine Connected'
+            : browserDevices.length > 0
+              ? 'Using Browser Audio (Demo Mode)'
+              : 'No Audio Devices Found'}
         </span>
       </div>
 
@@ -166,7 +233,7 @@ export const AudioSettings: React.FC<AudioSettingsProps> = ({ onClose }) => {
         <select
           value={selectedInputId ?? ''}
           onChange={handleInputChange}
-          disabled={!isConnected || inputDevices.length === 0}
+          disabled={inputDevices.length === 0}
           style={{
             width: '100%',
             padding: '8px 12px',
@@ -175,7 +242,7 @@ export const AudioSettings: React.FC<AudioSettingsProps> = ({ onClose }) => {
             backgroundColor: 'var(--bg-primary)',
             color: 'var(--text-primary)',
             fontSize: '0.9rem',
-            cursor: isConnected ? 'pointer' : 'not-allowed',
+            cursor: inputDevices.length > 0 ? 'pointer' : 'not-allowed',
           }}
         >
           <option value="">
@@ -205,7 +272,7 @@ export const AudioSettings: React.FC<AudioSettingsProps> = ({ onClose }) => {
         <select
           value={selectedOutputId ?? ''}
           onChange={handleOutputChange}
-          disabled={!isConnected || outputDevices.length === 0}
+          disabled={outputDevices.length === 0}
           style={{
             width: '100%',
             padding: '8px 12px',
@@ -214,7 +281,7 @@ export const AudioSettings: React.FC<AudioSettingsProps> = ({ onClose }) => {
             backgroundColor: 'var(--bg-primary)',
             color: 'var(--text-primary)',
             fontSize: '0.9rem',
-            cursor: isConnected ? 'pointer' : 'not-allowed',
+            cursor: outputDevices.length > 0 ? 'pointer' : 'not-allowed',
           }}
         >
           <option value="">

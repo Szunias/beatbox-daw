@@ -24,6 +24,9 @@ const App: React.FC = () => {
     audioLevel,
     sendMessage,
     onTransportPosition,
+    devices,
+    listDevices,
+    setAudioDevice,
   } = useWebSocket();
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -220,7 +223,13 @@ const App: React.FC = () => {
           onClick={() => setIsSettingsOpen(false)}
         >
           <div onClick={(e) => e.stopPropagation()}>
-            <AudioSettings onClose={() => setIsSettingsOpen(false)} />
+            <AudioSettings
+              onClose={() => setIsSettingsOpen(false)}
+              isConnected={isConnected}
+              devices={devices}
+              listDevices={listDevices}
+              setAudioDevice={setAudioDevice}
+            />
           </div>
         </div>
       )}
