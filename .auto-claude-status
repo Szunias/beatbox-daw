@@ -1,0 +1,25 @@
+{
+  "active": true,
+  "spec": "001-dobra-ogolnie-masz-poprawic-zeby-nasz-program-byl-",
+  "state": "building",
+  "subtasks": {
+    "completed": 27,
+    "total": 29,
+    "in_progress": 1,
+    "failed": 0
+  },
+  "phase": {
+    "current": "Integration & E2E Verification",
+    "id": null,
+    "total": 4
+  },
+  "workers": {
+    "active": 0,
+    "max": 1
+  },
+  "session": {
+    "number": 28,
+    "started_at": "2026-01-31T22:36:11.660707"
+  },
+  "last_update": "2026-02-01T00:24:28.449335"
+}

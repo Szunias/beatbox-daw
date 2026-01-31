@@ -40,6 +40,13 @@ export interface WebSocketMessage {
   data: unknown;
 }
 
+export interface RecordingCompletedData {
+  trackId: string;
+  startTick: number;
+  durationSeconds: number;
+  audioFilePath?: string;
+}
+
 interface UseWebSocketReturn {
   isConnected: boolean;
   isDemoMode: boolean;
@@ -70,6 +77,7 @@ interface UseWebSocketReturn {
   setAudioDevice: (deviceId: number, type: 'input' | 'output') => void;
   // Callbacks for external listeners
   onTransportPosition: (callback: (position: TransportPosition) => void) => () => void;
+  onRecordingCompleted: (callback: (data: RecordingCompletedData) => void) => () => void;
   // Demo mode
   playDemoPattern: (patternIndex?: number) => void;
   stopDemoPattern: () => void;
@@ -77,8 +85,19 @@ interface UseWebSocketReturn {
 }
 
 const MAX_EVENTS = 100;
-const RECONNECT_DELAY = 2000;
 const DEMO_MODE_TIMEOUT = 3000;
+
+// Exponential backoff configuration
+const RECONNECT_MIN_DELAY = 1000;
+const RECONNECT_MAX_DELAY = 30000;
+const RECONNECT_MULTIPLIER = 2;
+const MAX_COMMAND_QUEUE_SIZE = 100;
+
+interface QueuedCommand {
+  type: string;
+  data: Record<string, unknown>;
+  timestamp: number;
+}
 
 export function useWebSocket(url: string = 'ws://localhost:8765'): UseWebSocketReturn {
   const [isConnected, setIsConnected] = useState(false);
@@ -91,11 +110,44 @@ export function useWebSocket(url: string = 'ws://localhost:8765'): UseWebSocketR
 
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
+  const reconnectAttemptsRef = useRef<number>(0);
   const demoModeTimeoutRef = useRef<number | null>(null);
   const demoPlaybackRef = useRef<number | null>(null);
   const demoLevelRef = useRef<number | null>(null);
   const demoEventIndexRef = useRef(0);
   const transportPositionCallbacksRef = useRef<Set<(position: TransportPosition) => void>>(new Set());
+  const commandQueueRef = useRef<QueuedCommand[]>([]);
+  const transportPositionRef = useRef<TransportPosition | null>(null);
+  const recordingStartTickRef = useRef<number>(0);
+  const recordingTrackIdRef = useRef<string | null>(null);
+  const recordingCompletedCallbacksRef = useRef<Set<(data: RecordingCompletedData) => void>>(new Set());
+
+  // Calculate exponential backoff delay
+  const getReconnectDelay = useCallback(() => {
+    const delay = RECONNECT_MIN_DELAY * Math.pow(RECONNECT_MULTIPLIER, reconnectAttemptsRef.current);
+    return Math.min(delay, RECONNECT_MAX_DELAY);
+  }, []);
+
+  // Flush queued commands when connection is established
+  const flushCommandQueue = useCallback((ws: WebSocket) => {
+    const queue = commandQueueRef.current;
+    if (queue.length === 0) return;
+
+    // Filter out stale commands (older than 30 seconds)
+    const now = Date.now();
+    const validCommands = queue.filter(cmd => now - cmd.timestamp < 30000);
+
+    validCommands.forEach(cmd => {
+      try {
+        ws.send(JSON.stringify({ type: cmd.type, data: cmd.data }));
+      } catch {
+        // Ignore send errors during flush
+      }
+    });
+
+    // Clear the queue
+    commandQueueRef.current = [];
+  }, []);
 
   const connect = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -119,9 +171,11 @@ export function useWebSocket(url: string = 'ws://localhost:8765'): UseWebSocketR
       const ws = new WebSocket(url);
 
       ws.onopen = () => {
-        console.log('WebSocket connected');
         setIsConnected(true);
         setIsDemoMode(false);
+
+        // Reset reconnect attempts on successful connection
+        reconnectAttemptsRef.current = 0;
 
         // Clear demo mode timeout on successful connection
         if (demoModeTimeoutRef.current) {
@@ -129,21 +183,26 @@ export function useWebSocket(url: string = 'ws://localhost:8765'): UseWebSocketR
           demoModeTimeoutRef.current = null;
         }
 
+        // Flush any queued commands
+        flushCommandQueue(ws);
+
         // Request initial status
         ws.send(JSON.stringify({ type: 'status' }));
       };
 
       ws.onclose = () => {
-        console.log('WebSocket disconnected');
         setIsConnected(false);
         wsRef.current = null;
 
-        // Auto-reconnect
+        // Auto-reconnect with exponential backoff
         if (reconnectTimeoutRef.current === null) {
+          const delay = getReconnectDelay();
+          reconnectAttemptsRef.current++;
+
           reconnectTimeoutRef.current = window.setTimeout(() => {
             reconnectTimeoutRef.current = null;
             connect();
-          }, RECONNECT_DELAY);
+          }, delay);
         }
       };
 
@@ -161,10 +220,19 @@ export function useWebSocket(url: string = 'ws://localhost:8765'): UseWebSocketR
       };
 
       wsRef.current = ws;
-    } catch (error) {
-      console.error('Failed to connect:', error);
+    } catch {
+      // Connection failed, will retry with backoff
+      const delay = getReconnectDelay();
+      reconnectAttemptsRef.current++;
+
+      if (reconnectTimeoutRef.current === null) {
+        reconnectTimeoutRef.current = window.setTimeout(() => {
+          reconnectTimeoutRef.current = null;
+          connect();
+        }, delay);
+      }
     }
-  }, [url]);
+  }, [url, flushCommandQueue, getReconnectDelay]);
 
   const disconnect = useCallback(() => {
     if (reconnectTimeoutRef.current !== null) {
@@ -176,6 +244,11 @@ export function useWebSocket(url: string = 'ws://localhost:8765'): UseWebSocketR
       wsRef.current.close();
       wsRef.current = null;
     }
+
+    // Reset reconnect state
+    reconnectAttemptsRef.current = 0;
+    // Clear command queue on intentional disconnect
+    commandQueueRef.current = [];
 
     setIsConnected(false);
   }, []);
@@ -207,12 +280,69 @@ export function useWebSocket(url: string = 'ws://localhost:8765'): UseWebSocketR
         break;
 
       case 'recording_started':
-        console.log('Recording started');
+        // Legacy recording started (MIDI events)
         break;
 
       case 'recording_stopped':
-        console.log('Recording stopped:', message.data);
+        // Legacy recording stopped (MIDI events)
         break;
+
+      case 'track_recording_started': {
+        const startData = message.data as { track_id: string; start_time: number };
+        // Store the start tick - use the ref to get current transport position
+        const currentTick = transportPositionRef.current?.tick || 0;
+        recordingStartTickRef.current = currentTick;
+        recordingTrackIdRef.current = startData.track_id;
+        break;
+      }
+
+      case 'track_recording_stopped': {
+        const stopData = message.data as {
+          track_id: string;
+          duration: number;
+          sample_rate: number;
+          num_samples: number;
+          start_time: number;
+        };
+
+        // Create recording completed data
+        const recordingData: RecordingCompletedData = {
+          trackId: stopData.track_id || recordingTrackIdRef.current || '',
+          startTick: recordingStartTickRef.current,
+          durationSeconds: stopData.duration,
+          // Audio file path would be set by the backend when exporting
+          audioFilePath: undefined,
+        };
+
+        // Notify all registered callbacks
+        recordingCompletedCallbacksRef.current.forEach(callback => callback(recordingData));
+
+        // Reset recording state
+        recordingStartTickRef.current = 0;
+        recordingTrackIdRef.current = null;
+        break;
+      }
+
+      case 'track_recording_auto_stopped': {
+        const autoStopData = message.data as {
+          track_id: string;
+          duration: number;
+          reason: string;
+        };
+
+        // Handle auto-stop (e.g., max duration reached) same as regular stop
+        const recordingData: RecordingCompletedData = {
+          trackId: autoStopData.track_id || recordingTrackIdRef.current || '',
+          startTick: recordingStartTickRef.current,
+          durationSeconds: autoStopData.duration,
+        };
+
+        recordingCompletedCallbacksRef.current.forEach(callback => callback(recordingData));
+
+        recordingStartTickRef.current = 0;
+        recordingTrackIdRef.current = null;
+        break;
+      }
 
       case 'export_response':
         const exportData = message.data as { success: boolean; filename: string };
@@ -229,6 +359,7 @@ export function useWebSocket(url: string = 'ws://localhost:8765'): UseWebSocketR
       case 'transport_position': {
         const position = message.data as TransportPosition;
         setTransportPosition(position);
+        transportPositionRef.current = position;
         // Notify all registered callbacks
         transportPositionCallbacksRef.current.forEach(callback => callback(position));
         break;
@@ -262,6 +393,10 @@ export function useWebSocket(url: string = 'ws://localhost:8765'): UseWebSocketR
         console.log('Audio device changed:', message.data);
         break;
 
+      case 'set_track_armed_response':
+        // Track armed state synced with backend
+        break;
+
       default:
         console.log('Unknown message type:', message.type);
     }
@@ -270,6 +405,20 @@ export function useWebSocket(url: string = 'ws://localhost:8765'): UseWebSocketR
   const sendMessage = useCallback((type: string, data: Record<string, unknown> = {}) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type, data }));
+    } else {
+      // Queue command for later when not connected
+      // Skip queueing ping messages as they're not meaningful when disconnected
+      if (type !== 'ping') {
+        const queue = commandQueueRef.current;
+        // Limit queue size to prevent memory issues
+        if (queue.length < MAX_COMMAND_QUEUE_SIZE) {
+          queue.push({
+            type,
+            data,
+            timestamp: Date.now()
+          });
+        }
+      }
     }
   }, []);
 
@@ -341,6 +490,15 @@ export function useWebSocket(url: string = 'ws://localhost:8765'): UseWebSocketR
     // Return unsubscribe function
     return () => {
       transportPositionCallbacksRef.current.delete(callback);
+    };
+  }, []);
+
+  // === Recording Completed Callback ===
+  const onRecordingCompleted = useCallback((callback: (data: RecordingCompletedData) => void) => {
+    recordingCompletedCallbacksRef.current.add(callback);
+    // Return unsubscribe function
+    return () => {
+      recordingCompletedCallbacksRef.current.delete(callback);
     };
   }, []);
 
@@ -463,6 +621,7 @@ export function useWebSocket(url: string = 'ws://localhost:8765'): UseWebSocketR
     setAudioDevice,
     // Callbacks
     onTransportPosition,
+    onRecordingCompleted,
     // Demo mode
     playDemoPattern,
     stopDemoPattern,

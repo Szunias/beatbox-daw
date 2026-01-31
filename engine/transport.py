@@ -16,6 +16,7 @@ class TransportState(Enum):
     PLAYING = "playing"
     PAUSED = "paused"
     RECORDING = "recording"
+    PRE_ROLL = "pre_roll"  # Counting in before recording
 
 
 @dataclass
@@ -56,11 +57,17 @@ class Transport:
         self._position_callbacks: List[Callable[[int], None]] = []
         self._state_callbacks: List[Callable[[TransportState], None]] = []
         self._beat_callbacks: List[Callable[[int, int], None]] = []  # bar, beat
+        self._pre_roll_callbacks: List[Callable[[int, int], None]] = []  # bar, beat during pre-roll
 
-        # Internal timing
+        # Internal timing - use perf_counter for higher precision
         self._last_beat = -1
         self._running = False
         self._update_thread: Optional[threading.Thread] = None
+
+        # Pre-roll state
+        self._pre_roll_start_time: Optional[float] = None
+        self._pre_roll_ticks: int = 0
+        self._record_after_pre_roll: bool = False
 
     @property
     def state(self) -> TransportState:
@@ -69,8 +76,16 @@ class Transport:
     @property
     def current_tick(self) -> int:
         """Get current timeline position in ticks."""
+        if self._state == TransportState.PRE_ROLL:
+            # During pre-roll, return negative ticks (counting down to zero)
+            elapsed = time.perf_counter() - self._pre_roll_start_time
+            ticks_elapsed = self._seconds_to_ticks(elapsed)
+            remaining = int(self._pre_roll_ticks - ticks_elapsed)
+            return -remaining if remaining > 0 else 0
+
         if self._state in (TransportState.PLAYING, TransportState.RECORDING):
-            elapsed = time.time() - self._start_time
+            # Use perf_counter for higher precision timing
+            elapsed = time.perf_counter() - self._start_time
             ticks = self._start_tick + self._seconds_to_ticks(elapsed)
 
             # Handle loop
@@ -117,7 +132,8 @@ class Transport:
         if self._state == TransportState.PLAYING:
             return True
 
-        self._start_time = time.time()
+        # Use perf_counter for higher precision timing
+        self._start_time = time.perf_counter()
         self._start_tick = self._current_tick
         self._state = TransportState.PLAYING
         self._running = True
@@ -143,40 +159,114 @@ class Transport:
 
     def stop(self):
         """Stop playback and return to start."""
-        was_playing = self._state in (TransportState.PLAYING, TransportState.RECORDING)
+        was_active = self._state in (TransportState.PLAYING, TransportState.RECORDING, TransportState.PRE_ROLL)
         self._state = TransportState.STOPPED
         self._running = False
         self._current_tick = 0
         self._last_beat = -1
+        self._record_after_pre_roll = False
 
-        if was_playing:
+        if was_active:
             self._notify_state_change()
         print("Transport: Stopped")
 
-    def record(self) -> bool:
-        """Start recording."""
+    def record(self, use_pre_roll: bool = True) -> bool:
+        """Start recording, optionally with pre-roll count-in."""
         if self._state == TransportState.RECORDING:
             # Stop recording
             self._current_tick = self.current_tick
             self._state = TransportState.STOPPED
             self._running = False
+            self._record_after_pre_roll = False
             self._notify_state_change()
             print("Transport: Recording stopped")
             return False
-        else:
-            # Start recording
-            self._start_time = time.time()
-            self._start_tick = self._current_tick
-            self._state = TransportState.RECORDING
-            self._running = True
-
-            # Start update thread
-            self._update_thread = threading.Thread(target=self._update_loop, daemon=True)
-            self._update_thread.start()
-
+        elif self._state == TransportState.PRE_ROLL:
+            # Cancel pre-roll
+            self._state = TransportState.STOPPED
+            self._running = False
+            self._record_after_pre_roll = False
             self._notify_state_change()
-            print(f"Transport: Recording from tick {self._current_tick}")
-            return True
+            print("Transport: Pre-roll cancelled")
+            return False
+        else:
+            # Start recording (with or without pre-roll)
+            if use_pre_roll and self.config.pre_roll_bars > 0:
+                return self._start_pre_roll()
+            else:
+                return self._start_recording_immediate()
+
+    def _start_pre_roll(self) -> bool:
+        """Start pre-roll count-in before recording."""
+        self._pre_roll_ticks = self.config.pre_roll_bars * self.ticks_per_bar
+        self._pre_roll_start_time = time.perf_counter()
+        self._record_after_pre_roll = True
+        self._state = TransportState.PRE_ROLL
+        self._running = True
+
+        # Start update thread for pre-roll
+        self._update_thread = threading.Thread(target=self._pre_roll_loop, daemon=True)
+        self._update_thread.start()
+
+        self._notify_state_change()
+        print(f"Transport: Pre-roll started ({self.config.pre_roll_bars} bars)")
+        return True
+
+    def _start_recording_immediate(self) -> bool:
+        """Start recording immediately without pre-roll."""
+        # Use perf_counter for higher precision timing
+        self._start_time = time.perf_counter()
+        self._start_tick = self._current_tick
+        self._state = TransportState.RECORDING
+        self._running = True
+
+        # Start update thread
+        self._update_thread = threading.Thread(target=self._update_loop, daemon=True)
+        self._update_thread.start()
+
+        self._notify_state_change()
+        print(f"Transport: Recording from tick {self._current_tick}")
+        return True
+
+    def _pre_roll_loop(self):
+        """Background thread for pre-roll countdown."""
+        pre_roll_beat = -1
+
+        while self._running and self._state == TransportState.PRE_ROLL:
+            elapsed = time.perf_counter() - self._pre_roll_start_time
+            ticks_elapsed = self._seconds_to_ticks(elapsed)
+
+            # Check if pre-roll is complete
+            if ticks_elapsed >= self._pre_roll_ticks:
+                # Transition to recording
+                if self._record_after_pre_roll:
+                    self._running = False  # Stop pre-roll loop
+                    self._start_recording_immediate()
+                return
+
+            # Calculate current beat in pre-roll (for click track)
+            current_beat = int(ticks_elapsed // self.config.ppqn)
+            if current_beat != pre_roll_beat:
+                pre_roll_beat = current_beat
+                bar = current_beat // self.config.time_sig_numerator + 1
+                beat = current_beat % self.config.time_sig_numerator + 1
+
+                # Notify pre-roll callbacks (for metronome)
+                for callback in self._pre_roll_callbacks:
+                    try:
+                        callback(bar, beat)
+                    except Exception as e:
+                        print(f"Pre-roll callback error: {e}")
+
+                # Also notify beat callbacks during pre-roll
+                for callback in self._beat_callbacks:
+                    try:
+                        callback(-bar, beat)  # Negative bar indicates pre-roll
+                    except Exception as e:
+                        print(f"Beat callback error: {e}")
+
+            # High precision sleep - 1ms for accurate timing
+            time.sleep(0.001)
 
     def seek(self, tick: int):
         """Seek to specific tick position."""
@@ -230,8 +320,9 @@ class Transport:
                     except Exception as e:
                         print(f"Beat callback error: {e}")
 
-            # Sleep for ~10ms between updates
-            time.sleep(0.01)
+            # Sleep for ~1ms for higher precision timing
+            # This provides better timing accuracy while keeping CPU usage reasonable
+            time.sleep(0.001)
 
     def _notify_position_change(self):
         """Notify position change callbacks."""
@@ -262,12 +353,23 @@ class Transport:
         """Register callback for beat events (bar, beat)."""
         self._beat_callbacks.append(callback)
 
+    def add_pre_roll_callback(self, callback: Callable[[int, int], None]):
+        """Register callback for pre-roll beat events (bar, beat)."""
+        self._pre_roll_callbacks.append(callback)
+
     def get_status(self) -> dict:
         """Get current transport status."""
-        bar, beat = self._ticks_to_bar_beat(self.current_tick)
+        current_tick = self.current_tick
+        bar, beat = self._ticks_to_bar_beat(max(0, current_tick))
+
+        # Handle pre-roll status
+        pre_roll_remaining = 0
+        if self._state == TransportState.PRE_ROLL:
+            pre_roll_remaining = -current_tick if current_tick < 0 else 0
+
         return {
             'state': self._state.value,
-            'current_tick': self.current_tick,
+            'current_tick': current_tick,
             'bar': bar,
             'beat': beat,
             'bpm': self.config.bpm,
@@ -276,7 +378,14 @@ class Transport:
             'loop_start': self._loop.start_tick,
             'loop_end': self._loop.end_tick,
             'click_enabled': self.config.click_enabled,
+            'pre_roll_bars': self.config.pre_roll_bars,
+            'pre_roll_remaining': pre_roll_remaining,
         }
+
+    def set_pre_roll_bars(self, bars: int):
+        """Set the number of pre-roll bars before recording."""
+        self.config.pre_roll_bars = max(0, min(8, bars))
+        print(f"Transport: Pre-roll set to {self.config.pre_roll_bars} bars")
 
 
 # Standalone test
