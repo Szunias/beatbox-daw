@@ -58,3 +58,6 @@ training/dataset/**/*.wav
 
 # Audio recordings
 recordings/
+
+# Auto Claude data directory
+.auto-claude/

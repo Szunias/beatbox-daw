@@ -1611,6 +1611,40 @@ class WebSocketServer:
                 'effect_types': effect_types
             }}
 
+        # === Unified Effect Parameter Update Command ===
+        elif msg_type == 'update_effect_parameter':
+            effect_id = payload.get('effect_id')
+            param_name = payload.get('param_name')
+            value = payload.get('value')
+            track_id = payload.get('track_id')  # Optional: if provided, update track effect
+
+            if not all([effect_id, param_name, value is not None]):
+                return {'type': 'update_effect_parameter_response', 'data': {
+                    'success': False,
+                    'error': 'effect_id, param_name, and value are required'
+                }}
+
+            # If track_id is provided, update track effect; otherwise update master effect
+            if track_id:
+                success = self.engine.set_track_effect_parameter(
+                    track_id, effect_id, param_name, value
+                )
+                return {'type': 'update_effect_parameter_response', 'data': {
+                    'success': success,
+                    'effect_id': effect_id,
+                    'param_name': param_name,
+                    'value': value,
+                    'track_id': track_id
+                }}
+            else:
+                success = self.engine.set_master_effect_parameter(effect_id, param_name, value)
+                return {'type': 'update_effect_parameter_response', 'data': {
+                    'success': success,
+                    'effect_id': effect_id,
+                    'param_name': param_name,
+                    'value': value
+                }}
+
         elif msg_type == 'ping':
             return {'type': 'pong', 'data': {}}
 

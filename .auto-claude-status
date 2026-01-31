@@ -1,0 +1,25 @@
+{
+  "active": true,
+  "spec": "001-dobra-ogolnie-masz-poprawic-zeby-nasz-program-byl-",
+  "state": "building",
+  "subtasks": {
+    "completed": 10,
+    "total": 29,
+    "in_progress": 1,
+    "failed": 0
+  },
+  "phase": {
+    "current": "Backend Effects Processing",
+    "id": null,
+    "total": 3
+  },
+  "workers": {
+    "active": 0,
+    "max": 1
+  },
+  "session": {
+    "number": 11,
+    "started_at": "2026-01-31T22:36:11.660707"
+  },
+  "last_update": "2026-01-31T23:12:40.274991"
+}
