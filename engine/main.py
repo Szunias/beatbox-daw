@@ -19,6 +19,7 @@ import time
 
 from audio_capture import AudioCapture, AudioConfig
 from audio_recorder import AudioRecorder, RecordingConfig, RecordingMetadata
+from audio_playback import AudioPlayback, AudioPlaybackConfig
 from onset_detector import OnsetDetector, OnsetConfig
 from classifier.inference import BeatboxClassifier, RuleBasedClassifier, InferenceConfig
 from midi_output import MidiOutput, MidiEvent
@@ -112,6 +113,20 @@ class BeatBoxDawEngine:
         self.scheduler.set_note_on_callback(self._on_scheduled_note_on)
         self.scheduler.set_note_off_callback(self._on_scheduled_note_off)
         self.scheduler.set_click_callback(self._on_click)
+
+        # Audio Playback
+        playback_config = AudioPlaybackConfig(
+            sample_rate=self.config.sample_rate,
+            buffer_size=self.config.buffer_size,
+            channels=2  # Stereo output
+        )
+        self.audio_playback = AudioPlayback(self.transport, playback_config)
+        self.audio_playback.set_clip_started_callback(self._on_audio_clip_started)
+        self.audio_playback.set_clip_ended_callback(self._on_audio_clip_ended)
+
+        # Connect scheduler audio clip callbacks to audio playback
+        self.scheduler.set_audio_clip_start_callback(self._on_scheduled_audio_clip_start)
+        self.scheduler.set_audio_clip_stop_callback(self._on_scheduled_audio_clip_stop)
 
         # Recording buffer for beatbox events
         self._beatbox_recording: list = []
@@ -310,6 +325,62 @@ class BeatBoxDawEngine:
                 'type': 'click',
                 'data': {'bar': bar, 'beat': beat}
             }))
+
+    # === Audio Playback Callbacks ===
+
+    def _on_scheduled_audio_clip_start(self, clip_id: str, track_id: str, file_path: str,
+                                        duration_ticks: int, volume: float, pan: float):
+        """Handle audio clip start from scheduler - load and play the clip."""
+        track = self.project_manager.get_track(track_id)
+        if track and track.muted:
+            return
+
+        # Get track volume/pan/mute settings
+        track_volume = track.volume if track else 1.0
+        track_pan = track.pan if track else 0.0
+
+        # Calculate start tick based on clip position
+        clip_info = self.scheduler._audio_clips.get(clip_id, {})
+        start_tick = clip_info.get('start_tick', 0)
+
+        # Load audio file into playback system if not already loaded
+        if not self.audio_playback._clips.get(clip_id):
+            self.audio_playback.load_audio_file(
+                filepath=file_path,
+                clip_id=clip_id,
+                track_id=track_id,
+                start_tick=start_tick,
+                duration_ticks=duration_ticks,
+                volume=volume * track_volume,
+                pan=pan + track_pan
+            )
+
+        # Update track settings
+        self.audio_playback.set_track_settings(
+            track_id=track_id,
+            volume=track_volume,
+            pan=track_pan,
+            muted=track.muted if track else False
+        )
+
+    def _on_scheduled_audio_clip_stop(self, clip_id: str, track_id: str):
+        """Handle audio clip stop from scheduler."""
+        # AudioPlayback handles clip stopping automatically via events
+        pass
+
+    def _on_audio_clip_started(self, clip_id: str, track_id: str):
+        """Callback when audio clip actually starts playing."""
+        asyncio.create_task(self.broadcast({
+            'type': 'audio_clip_started',
+            'data': {'clip_id': clip_id, 'track_id': track_id}
+        }))
+
+    def _on_audio_clip_ended(self, clip_id: str, track_id: str):
+        """Callback when audio clip finishes playing."""
+        asyncio.create_task(self.broadcast({
+            'type': 'audio_clip_ended',
+            'data': {'clip_id': clip_id, 'track_id': track_id}
+        }))
 
     # === Engine Controls ===
 
@@ -524,6 +595,203 @@ class BeatBoxDawEngine:
             'name': clip.name,
             'notes': len(notes)
         }
+
+    # === Audio Clip Management ===
+
+    def load_audio_clip(self, filepath: str, clip_id: str, track_id: str,
+                        start_tick: int, duration_ticks: int,
+                        volume: float = 1.0, pan: float = 0.0) -> bool:
+        """Load an audio file as a clip for playback.
+
+        Args:
+            filepath: Path to audio file (WAV format)
+            clip_id: Unique ID for this clip
+            track_id: ID of the track this clip belongs to
+            start_tick: Timeline position where clip starts
+            duration_ticks: Duration in ticks
+            volume: Clip volume (0.0-1.0)
+            pan: Stereo pan (-1.0 left, 0.0 center, 1.0 right)
+
+        Returns:
+            True if loaded successfully
+        """
+        # Get track settings for volume/pan adjustment
+        track = self.project_manager.get_track(track_id)
+        track_volume = track.volume if track else 1.0
+        track_pan = track.pan if track else 0.0
+        track_muted = track.muted if track else False
+
+        # Load into audio playback system
+        success = self.audio_playback.load_audio_file(
+            filepath=filepath,
+            clip_id=clip_id,
+            track_id=track_id,
+            start_tick=start_tick,
+            duration_ticks=duration_ticks,
+            volume=volume,
+            pan=pan
+        )
+
+        if success:
+            # Update track settings in playback
+            self.audio_playback.set_track_settings(
+                track_id=track_id,
+                volume=track_volume,
+                pan=track_pan,
+                muted=track_muted
+            )
+
+            # Also register with scheduler for event timing
+            self.scheduler.load_audio_clip(
+                clip_id=clip_id,
+                track_id=track_id,
+                file_path=filepath,
+                start_tick=start_tick,
+                duration_ticks=duration_ticks,
+                volume=volume,
+                pan=pan
+            )
+
+        return success
+
+    def load_audio_clip_from_recording(self, clip_id: str, track_id: str,
+                                        start_tick: int) -> bool:
+        """Load audio from the current recording buffer as a clip.
+
+        Args:
+            clip_id: Unique ID for this clip
+            track_id: ID of the track this clip belongs to
+            start_tick: Timeline position where clip starts
+
+        Returns:
+            True if loaded successfully
+        """
+        if not self.audio_recorder.is_recording and self.audio_recorder.buffer is None:
+            return False
+
+        # Get the recorded audio data
+        audio_data = self.audio_recorder.get_audio_data()
+        if audio_data is None or len(audio_data) == 0:
+            return False
+
+        # Calculate duration in ticks
+        duration_seconds = len(audio_data) / self.config.sample_rate
+        ppqn = self.transport.ticks_per_beat
+        bpm = self.transport.bpm
+        ticks_per_second = (bpm / 60.0) * ppqn
+        duration_ticks = int(duration_seconds * ticks_per_second)
+
+        # Get track settings
+        track = self.project_manager.get_track(track_id)
+        track_volume = track.volume if track else 1.0
+        track_pan = track.pan if track else 0.0
+        track_muted = track.muted if track else False
+
+        # Load into audio playback system
+        success = self.audio_playback.load_audio_data(
+            audio_data=audio_data,
+            sample_rate=self.config.sample_rate,
+            clip_id=clip_id,
+            track_id=track_id,
+            start_tick=start_tick,
+            duration_ticks=duration_ticks,
+            volume=1.0,
+            pan=0.0
+        )
+
+        if success:
+            self.audio_playback.set_track_settings(
+                track_id=track_id,
+                volume=track_volume,
+                pan=track_pan,
+                muted=track_muted
+            )
+
+        return success
+
+    def unload_audio_clip(self, clip_id: str) -> bool:
+        """Remove a loaded audio clip.
+
+        Args:
+            clip_id: ID of the clip to unload
+
+        Returns:
+            True if unloaded successfully
+        """
+        playback_success = self.audio_playback.unload_clip(clip_id)
+        scheduler_success = self.scheduler.unload_audio_clip(clip_id)
+        return playback_success or scheduler_success
+
+    def update_track_settings(self, track_id: str, volume: float = None,
+                               pan: float = None, muted: bool = None) -> bool:
+        """Update track mixer settings for audio playback.
+
+        Args:
+            track_id: ID of the track to update
+            volume: New volume (0.0-1.0)
+            pan: New pan (-1.0 left, 0.0 center, 1.0 right)
+            muted: New mute state
+
+        Returns:
+            True if updated
+        """
+        # Update audio playback settings
+        self.audio_playback.set_track_settings(
+            track_id=track_id,
+            volume=volume,
+            pan=pan,
+            muted=muted
+        )
+
+        # Also update the track in project
+        track = self.project_manager.get_track(track_id)
+        if track:
+            if volume is not None:
+                track.volume = max(0.0, min(1.0, volume))
+            if pan is not None:
+                track.pan = max(-1.0, min(1.0, pan))
+            if muted is not None:
+                track.muted = muted
+                # Reload track events if mute state changed
+                self.scheduler.load_track(track)
+
+        return True
+
+    def set_master_volume(self, volume: float) -> bool:
+        """Set master output volume.
+
+        Args:
+            volume: Master volume (0.0-1.0)
+
+        Returns:
+            True if set
+        """
+        self.audio_playback.master_volume = max(0.0, min(1.0, volume))
+        return True
+
+    def get_audio_playback_status(self) -> dict:
+        """Get audio playback status.
+
+        Returns:
+            Dictionary with playback info
+        """
+        return {
+            'active_clips': self.audio_playback.get_active_clips(),
+            'loaded_clips': self.audio_playback.get_loaded_clips(),
+            'master_volume': self.audio_playback.master_volume,
+            'device_id': self.audio_playback.current_device_id
+        }
+
+    def set_audio_output_device(self, device_id: int) -> bool:
+        """Set audio output device.
+
+        Args:
+            device_id: ID of the output device
+
+        Returns:
+            True if set successfully
+        """
+        return self.audio_playback.set_device(device_id)
 
     # === Status ===
 
@@ -886,6 +1154,100 @@ class WebSocketServer:
         elif msg_type == 'get_track_recording_info':
             info = self.engine.get_track_recording_info()
             return {'type': 'track_recording_info', 'data': info}
+
+        # === Audio Playback Commands ===
+        elif msg_type == 'load_audio_clip':
+            filepath = payload.get('filepath')
+            clip_id = payload.get('clip_id')
+            track_id = payload.get('track_id')
+            start_tick = payload.get('start_tick', 0)
+            duration_ticks = payload.get('duration_ticks', 0)
+            volume = payload.get('volume', 1.0)
+            pan = payload.get('pan', 0.0)
+
+            if not all([filepath, clip_id, track_id]):
+                return {'type': 'load_audio_clip_response', 'data': {
+                    'success': False,
+                    'error': 'filepath, clip_id, and track_id are required'
+                }}
+
+            success = self.engine.load_audio_clip(
+                filepath=filepath,
+                clip_id=clip_id,
+                track_id=track_id,
+                start_tick=start_tick,
+                duration_ticks=duration_ticks,
+                volume=volume,
+                pan=pan
+            )
+            return {'type': 'load_audio_clip_response', 'data': {
+                'success': success,
+                'clip_id': clip_id
+            }}
+
+        elif msg_type == 'unload_audio_clip':
+            clip_id = payload.get('clip_id')
+            if not clip_id:
+                return {'type': 'unload_audio_clip_response', 'data': {
+                    'success': False,
+                    'error': 'clip_id is required'
+                }}
+            success = self.engine.unload_audio_clip(clip_id)
+            return {'type': 'unload_audio_clip_response', 'data': {
+                'success': success,
+                'clip_id': clip_id
+            }}
+
+        elif msg_type == 'update_track_settings':
+            track_id = payload.get('track_id')
+            if not track_id:
+                return {'type': 'update_track_settings_response', 'data': {
+                    'success': False,
+                    'error': 'track_id is required'
+                }}
+            success = self.engine.update_track_settings(
+                track_id=track_id,
+                volume=payload.get('volume'),
+                pan=payload.get('pan'),
+                muted=payload.get('muted')
+            )
+            return {'type': 'update_track_settings_response', 'data': {
+                'success': success,
+                'track_id': track_id
+            }}
+
+        elif msg_type == 'set_master_volume':
+            volume = payload.get('volume', 1.0)
+            success = self.engine.set_master_volume(volume)
+            return {'type': 'set_master_volume_response', 'data': {
+                'success': success,
+                'volume': self.engine.audio_playback.master_volume
+            }}
+
+        elif msg_type == 'get_audio_playback_status':
+            status = self.engine.get_audio_playback_status()
+            return {'type': 'audio_playback_status', 'data': status}
+
+        elif msg_type == 'set_audio_output_device':
+            device_id = payload.get('device_id')
+            if device_id is None:
+                return {'type': 'set_audio_output_device_response', 'data': {
+                    'success': False,
+                    'error': 'device_id is required'
+                }}
+            success = self.engine.set_audio_output_device(device_id)
+            return {'type': 'set_audio_output_device_response', 'data': {
+                'success': success,
+                'device_id': device_id
+            }}
+
+        elif msg_type == 'list_output_devices':
+            devices = AudioPlayback.list_output_devices()
+            default = AudioPlayback.get_default_output_device()
+            return {'type': 'output_devices', 'data': {
+                'devices': devices,
+                'default': default
+            }}
 
         elif msg_type == 'ping':
             return {'type': 'pong', 'data': {}}
