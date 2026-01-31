@@ -32,7 +32,7 @@ export const Timeline: React.FC<TimelineProps> = ({ height = 400 }) => {
   const trackHeaderWidth = isMobile ? trackHeaderWidth_MOBILE : trackHeaderWidth_DESKTOP;
 
   const { project, addTrack, removeTrack, selectedTrackId, selectTrack } = useProjectStore();
-  const { seekTo, currentTick, stop } = useTransportStore();
+  const { seekTo, currentTick, stop, isRecording } = useTransportStore();
   const { timelineViewport, scrollTimeline, zoomTimeline, setTimelineViewport } = useUIStore();
 
   // Context menu
@@ -306,6 +306,67 @@ export const Timeline: React.FC<TimelineProps> = ({ height = 400 }) => {
 
           {/* Playhead */}
           <Playhead height={tracksAreaHeight} containerWidth={containerWidth} />
+
+          {/* Recording overlay */}
+          {isRecording && (
+            <div
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                border: '2px solid var(--error)',
+                borderRadius: 4,
+                pointerEvents: 'none',
+                animation: 'recording-pulse 1s ease-in-out infinite',
+              }}
+            >
+              <style>
+                {`
+                  @keyframes recording-pulse {
+                    0%, 100% { box-shadow: inset 0 0 20px rgba(229, 62, 62, 0.2); }
+                    50% { box-shadow: inset 0 0 30px rgba(229, 62, 62, 0.4); }
+                  }
+                `}
+              </style>
+              <div
+                style={{
+                  position: 'absolute',
+                  top: 8,
+                  right: 8,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '4px 8px',
+                  backgroundColor: 'var(--error)',
+                  borderRadius: 4,
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  color: 'white',
+                }}
+              >
+                <div
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: '50%',
+                    backgroundColor: 'white',
+                    animation: 'recording-dot-blink 1s ease-in-out infinite',
+                  }}
+                />
+                <style>
+                  {`
+                    @keyframes recording-dot-blink {
+                      0%, 100% { opacity: 1; }
+                      50% { opacity: 0.4; }
+                    }
+                  `}
+                </style>
+                REC
+              </div>
+            </div>
+          )}
 
           {/* Loop region overlay */}
           {/* TODO: Add loop region visualization */}

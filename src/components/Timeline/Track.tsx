@@ -7,6 +7,7 @@ import React, { useMemo, useCallback } from 'react';
 import { Track as TrackType, TICKS_PER_BEAT, createMidiClip } from '../../types/project';
 import { useUIStore } from '../../stores/uiStore';
 import { useProjectStore } from '../../stores/projectStore';
+import { useTransportStore } from '../../stores/transportStore';
 import { Clip } from './Clip';
 
 interface TrackProps {
@@ -18,6 +19,7 @@ interface TrackProps {
 export const Track: React.FC<TrackProps> = ({ track, height, width }) => {
   const { timelineViewport, openPianoRoll, snapSettings } = useUIStore();
   const { project, addClip } = useProjectStore();
+  const { isRecording } = useTransportStore();
   const { startTick, endTick } = timelineViewport;
 
   const tickRange = endTick - startTick;
@@ -104,6 +106,8 @@ export const Track: React.FC<TrackProps> = ({ track, height, width }) => {
         position: 'relative',
         backgroundColor: 'var(--bg-primary)',
         borderBottom: '1px solid rgba(255,255,255,0.05)',
+        borderLeft: track.armed ? '3px solid var(--error)' : 'none',
+        boxSizing: 'border-box',
       }}
     >
       {/* Grid background */}
@@ -159,6 +163,90 @@ export const Track: React.FC<TrackProps> = ({ track, height, width }) => {
             pointerEvents: 'none',
           }}
         />
+      )}
+
+      {/* Armed track recording indicator */}
+      {track.armed && isRecording && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(229, 62, 62, 0.1)',
+            pointerEvents: 'none',
+            animation: 'armed-track-pulse 1.5s ease-in-out infinite',
+          }}
+        >
+          <style>
+            {`
+              @keyframes armed-track-pulse {
+                0%, 100% { background-color: rgba(229, 62, 62, 0.1); }
+                50% { background-color: rgba(229, 62, 62, 0.2); }
+              }
+            `}
+          </style>
+          <div
+            style={{
+              position: 'absolute',
+              top: '50%',
+              left: 8,
+              transform: 'translateY(-50%)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              padding: '2px 6px',
+              backgroundColor: 'var(--error)',
+              borderRadius: 3,
+              fontSize: '0.65rem',
+              fontWeight: 600,
+              color: 'white',
+            }}
+          >
+            <div
+              style={{
+                width: 6,
+                height: 6,
+                borderRadius: '50%',
+                backgroundColor: 'white',
+                animation: 'recording-blink 0.8s ease-in-out infinite',
+              }}
+            />
+            <style>
+              {`
+                @keyframes recording-blink {
+                  0%, 100% { opacity: 1; }
+                  50% { opacity: 0.3; }
+                }
+              `}
+            </style>
+            REC
+          </div>
+        </div>
+      )}
+
+      {/* Armed track indicator (not recording) */}
+      {track.armed && !isRecording && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 4,
+            left: 4,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            padding: '2px 6px',
+            backgroundColor: 'rgba(229, 62, 62, 0.8)',
+            borderRadius: 3,
+            fontSize: '0.65rem',
+            fontWeight: 600,
+            color: 'white',
+            pointerEvents: 'none',
+          }}
+        >
+          ARMED
+        </div>
       )}
     </div>
   );
