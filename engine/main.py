@@ -18,6 +18,7 @@ import threading
 import time
 
 from audio_capture import AudioCapture, AudioConfig
+from audio_recorder import AudioRecorder, RecordingConfig, RecordingMetadata
 from onset_detector import OnsetDetector, OnsetConfig
 from classifier.inference import BeatboxClassifier, RuleBasedClassifier, InferenceConfig
 from midi_output import MidiOutput, MidiEvent
@@ -115,6 +116,23 @@ class BeatBoxDawEngine:
         # Recording buffer for beatbox events
         self._beatbox_recording: list = []
         self._beatbox_recording_start: Optional[float] = None
+
+        # === Audio Track Recording ===
+
+        # Audio recorder for track recording
+        recording_config = RecordingConfig(
+            sample_rate=self.config.sample_rate,
+            channels=1,  # Mono recording
+            max_duration=3600.0  # 1 hour max
+        )
+        self.audio_recorder = AudioRecorder(recording_config)
+
+        # Track recording state
+        self._recording_track_id: Optional[str] = None
+        self._audio_recording_active = False
+
+        # Setup audio recorder callbacks
+        self.audio_recorder.on_recording_stopped = self._on_audio_recording_stopped
 
         # WebSocket clients
         self.clients: Set[WebSocketServerProtocol] = set()
@@ -534,6 +552,135 @@ class BeatBoxDawEngine:
     def export_midi(self, filename: str, bpm: int = 120) -> bool:
         """Export recorded MIDI to file."""
         return self.midi_output.export_midi_file(filename, bpm=bpm)
+
+    # === Audio Track Recording ===
+
+    def start_track_recording(self, track_id: str) -> bool:
+        """Start recording audio to a specific track.
+
+        Args:
+            track_id: ID of the track to record to
+
+        Returns:
+            True if recording started successfully, False otherwise
+        """
+        if self._audio_recording_active:
+            return False
+
+        # Verify track exists
+        track = self.project_manager.get_track(track_id)
+        if not track:
+            return False
+
+        # Calculate timeline position in seconds
+        current_tick = self.transport.current_tick
+        ppqn = self.transport.ticks_per_beat
+        bpm = self.transport.bpm
+        start_time = current_tick / ppqn * (60.0 / bpm)
+
+        # Start audio recording
+        if not self.audio_recorder.start_recording(start_time):
+            return False
+
+        self._recording_track_id = track_id
+        self._audio_recording_active = True
+
+        # Ensure audio capture is running and feeding to recorder
+        if not self.audio_capture.is_running:
+            self.audio_capture.add_callback(self._track_recording_callback)
+            self.audio_capture.start()
+        else:
+            # Add recording callback if not already added
+            if self._track_recording_callback not in self.audio_capture.callbacks:
+                self.audio_capture.add_callback(self._track_recording_callback)
+
+        asyncio.create_task(self.broadcast({
+            'type': 'track_recording_started',
+            'data': {
+                'track_id': track_id,
+                'start_time': start_time
+            }
+        }))
+
+        return True
+
+    def stop_track_recording(self) -> Optional[dict]:
+        """Stop audio track recording and return recording info.
+
+        Returns:
+            Recording info dictionary or None if not recording
+        """
+        if not self._audio_recording_active:
+            return None
+
+        # Stop audio recording
+        metadata = self.audio_recorder.stop_recording()
+
+        # Remove recording callback
+        if self._track_recording_callback in self.audio_capture.callbacks:
+            self.audio_capture.remove_callback(self._track_recording_callback)
+
+        track_id = self._recording_track_id
+        self._recording_track_id = None
+        self._audio_recording_active = False
+
+        if metadata is None:
+            return None
+
+        result = {
+            'track_id': track_id,
+            'duration': metadata.duration,
+            'sample_rate': metadata.sample_rate,
+            'num_samples': metadata.num_samples,
+            'start_time': metadata.start_time
+        }
+
+        asyncio.create_task(self.broadcast({
+            'type': 'track_recording_stopped',
+            'data': result
+        }))
+
+        return result
+
+    def export_track_recording(self, filename: str, normalize: bool = True) -> bool:
+        """Export the current track recording to a WAV file.
+
+        Args:
+            filename: Output file path
+            normalize: Whether to normalize audio
+
+        Returns:
+            True if export successful
+        """
+        return self.audio_recorder.export_wav(filename, normalize)
+
+    def get_track_recording_info(self) -> dict:
+        """Get information about the current track recording.
+
+        Returns:
+            Dictionary with recording info
+        """
+        info = self.audio_recorder.get_recording_info()
+        info['track_id'] = self._recording_track_id
+        return info
+
+    def _track_recording_callback(self, audio: np.ndarray) -> None:
+        """Callback for audio capture to feed audio to the recorder."""
+        if self._audio_recording_active:
+            self.audio_recorder.add_audio_buffer(audio)
+
+    def _on_audio_recording_stopped(self, metadata: RecordingMetadata) -> None:
+        """Callback when audio recording is stopped (e.g., max duration reached)."""
+        if self._audio_recording_active:
+            self._audio_recording_active = False
+            asyncio.create_task(self.broadcast({
+                'type': 'track_recording_auto_stopped',
+                'data': {
+                    'track_id': self._recording_track_id,
+                    'duration': metadata.duration,
+                    'reason': 'max_duration_reached'
+                }
+            }))
 
 
 class WebSocketServer:
