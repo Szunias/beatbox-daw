@@ -1843,6 +1843,47 @@ class WebSocketServer:
                     'value': value
                 }}
 
+        # === Audio Export Commands ===
+        elif msg_type == 'export_audio':
+            filepath = payload.get('filepath')
+            if not filepath:
+                return {'type': 'export_audio_response', 'data': {
+                    'success': False,
+                    'error': 'filepath is required'
+                }}
+
+            start_tick = payload.get('start_tick', 0)
+            end_tick = payload.get('end_tick')  # None for auto-detect
+
+            # Use async export for non-blocking operation with progress updates
+            success = self.engine.export_audio_async(filepath, start_tick, end_tick)
+            return {'type': 'export_audio_response', 'data': {
+                'success': success,
+                'filepath': filepath,
+                'start_tick': start_tick,
+                'end_tick': end_tick
+            }}
+
+        elif msg_type == 'cancel_export':
+            self.engine.cancel_export()
+            return {'type': 'cancel_export_response', 'data': {
+                'success': True
+            }}
+
+        elif msg_type == 'get_export_state':
+            state = self.engine.get_export_state()
+            return {'type': 'export_state', 'data': {
+                'state': state
+            }}
+
+        elif msg_type == 'get_export_progress':
+            progress = self.engine.get_export_progress()
+            return {'type': 'export_progress', 'data': progress}
+
+        elif msg_type == 'get_export_info':
+            info = self.engine.get_export_info()
+            return {'type': 'export_info', 'data': info}
+
         elif msg_type == 'ping':
             return {'type': 'pong', 'data': {}}
 
