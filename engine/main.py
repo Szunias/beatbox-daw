@@ -189,6 +189,10 @@ class BeatBoxDawEngine:
             TransportState.PRE_ROLL: [TransportState.STOPPED, TransportState.RECORDING],
         }
 
+        # Store event loop reference for thread-safe callbacks
+        # Will be set when server starts
+        self._event_loop: Optional[asyncio.AbstractEventLoop] = None
+
     # === BeatBox Detection ===
 
     async def broadcast(self, message: dict) -> None:
@@ -272,6 +276,22 @@ class BeatBoxDawEngine:
 
     # === Transport Broadcast Callbacks ===
 
+    def _broadcast_threadsafe(self, message: dict):
+        """Thread-safe broadcast helper for callbacks from non-async contexts.
+
+        Uses run_coroutine_threadsafe when called from a thread (e.g., transport update thread),
+        or create_task when already in an async context.
+        """
+        if self._event_loop is None:
+            return
+
+        try:
+            # Use run_coroutine_threadsafe for thread-safe scheduling
+            asyncio.run_coroutine_threadsafe(self.broadcast(message), self._event_loop)
+        except Exception as e:
+            # Silently ignore errors during shutdown
+            pass
+
     def _on_transport_position(self, tick: int):
         """Broadcast transport position to all clients (throttled).
 
@@ -285,7 +305,7 @@ class BeatBoxDawEngine:
             # Get bar and beat for enhanced position data
             bar, beat = self.transport._ticks_to_bar_beat(max(0, tick))
 
-            asyncio.create_task(self.broadcast({
+            self._broadcast_threadsafe({
                 'type': 'transport_position',
                 'data': {
                     'tick': tick,
@@ -295,7 +315,7 @@ class BeatBoxDawEngine:
                     'bpm': self.transport.bpm,
                     'timestamp': current_time  # High-precision timestamp for sync
                 }
-            }))
+            })
 
     def _on_transport_state_change(self, state: TransportState):
         """Broadcast transport state change to all clients.
@@ -305,7 +325,7 @@ class BeatBoxDawEngine:
         current_tick = self.transport.current_tick
         bar, beat = self.transport._ticks_to_bar_beat(max(0, current_tick))
 
-        asyncio.create_task(self.broadcast({
+        self._broadcast_threadsafe({
             'type': 'transport_state',
             'data': {
                 'state': state.value,
@@ -315,7 +335,7 @@ class BeatBoxDawEngine:
                 'bpm': self.transport.bpm,
                 'timestamp': time.perf_counter()
             }
-        }))
+        })
 
     # === DAW Scheduler Callbacks ===
 
@@ -337,10 +357,10 @@ class BeatBoxDawEngine:
             note = 76 if beat == 1 else 77  # Woodblock sounds
             self.midi_output.send_note(note, velocity, duration=0.05, channel=9)
 
-            asyncio.create_task(self.broadcast({
+            self._broadcast_threadsafe({
                 'type': 'click',
                 'data': {'bar': bar, 'beat': beat}
-            }))
+            })
 
     # === Audio Playback Callbacks ===
 
@@ -1914,6 +1934,9 @@ async def main():
     # Create engine
     config = EngineConfig()
     engine = BeatBoxDawEngine(config)
+
+    # Store the event loop reference for thread-safe callbacks
+    engine._event_loop = asyncio.get_running_loop()
 
     # Create WebSocket server
     server = WebSocketServer(engine, config.websocket_host, config.websocket_port)
