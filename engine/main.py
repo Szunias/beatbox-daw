@@ -793,6 +793,119 @@ class BeatBoxDawEngine:
         """
         return self.audio_playback.set_device(device_id)
 
+    # === Track Effects Management ===
+
+    def add_track_effect(self, track_id: str, effect_type: str,
+                         effect_id: Optional[str] = None,
+                         position: Optional[int] = None) -> Optional[str]:
+        """
+        Add an effect to a track's effect chain.
+
+        Args:
+            track_id: ID of the track
+            effect_type: Type of effect ('eq3band', 'compressor', 'delay', 'reverb')
+            effect_id: Optional ID for the effect
+            position: Optional position in chain
+
+        Returns:
+            Effect ID if successful, None if effect type not found
+        """
+        return self.audio_playback.add_track_effect(track_id, effect_type, effect_id, position)
+
+    def remove_track_effect(self, track_id: str, effect_id: str) -> bool:
+        """Remove an effect from a track's effect chain."""
+        return self.audio_playback.remove_track_effect(track_id, effect_id)
+
+    def move_track_effect(self, track_id: str, effect_id: str, new_position: int) -> bool:
+        """Move an effect to a new position in a track's effect chain."""
+        return self.audio_playback.move_track_effect(track_id, effect_id, new_position)
+
+    def set_track_effect_parameter(self, track_id: str, effect_id: str,
+                                    param_name: str, value: float) -> bool:
+        """Set a parameter on a track's effect."""
+        return self.audio_playback.set_track_effect_parameter(
+            track_id, effect_id, param_name, value
+        )
+
+    def get_track_effect_parameters(self, track_id: str, effect_id: str) -> Optional[dict]:
+        """Get parameters of a track's effect."""
+        return self.audio_playback.get_track_effect_parameters(track_id, effect_id)
+
+    def get_track_effects_chain(self, track_id: str) -> list:
+        """Get information about all effects in a track's chain."""
+        return self.audio_playback.get_track_effects_chain(track_id)
+
+    def bypass_track_effects(self, track_id: str, bypassed: bool = True) -> bool:
+        """Bypass all effects for a track."""
+        return self.audio_playback.bypass_track_effects(track_id, bypassed)
+
+    def reset_track_effects(self, track_id: str) -> bool:
+        """Reset all effects in a track's chain."""
+        return self.audio_playback.reset_track_effects(track_id)
+
+    def clear_track_effects(self, track_id: str) -> bool:
+        """Remove all effects from a track's chain."""
+        return self.audio_playback.clear_track_effects(track_id)
+
+    # === Master Effects Management ===
+
+    def add_master_effect(self, effect_type: str,
+                          effect_id: Optional[str] = None,
+                          position: Optional[int] = None) -> Optional[str]:
+        """
+        Add an effect to the master effect chain.
+
+        Args:
+            effect_type: Type of effect ('eq3band', 'compressor', 'delay', 'reverb')
+            effect_id: Optional ID for the effect
+            position: Optional position in chain
+
+        Returns:
+            Effect ID if successful, None if effect type not found
+        """
+        return self.audio_playback.add_master_effect(effect_type, effect_id, position)
+
+    def remove_master_effect(self, effect_id: str) -> bool:
+        """Remove an effect from the master effect chain."""
+        return self.audio_playback.remove_master_effect(effect_id)
+
+    def move_master_effect(self, effect_id: str, new_position: int) -> bool:
+        """Move an effect to a new position in the master effect chain."""
+        return self.audio_playback.move_master_effect(effect_id, new_position)
+
+    def set_master_effect_parameter(self, effect_id: str,
+                                     param_name: str, value: float) -> bool:
+        """Set a parameter on a master effect."""
+        return self.audio_playback.set_master_effect_parameter(effect_id, param_name, value)
+
+    def get_master_effect_parameters(self, effect_id: str) -> Optional[dict]:
+        """Get parameters of a master effect."""
+        return self.audio_playback.get_master_effect_parameters(effect_id)
+
+    def get_master_effects_chain(self) -> list:
+        """Get information about all effects in the master chain."""
+        return self.audio_playback.get_master_effects_chain()
+
+    def bypass_master_effects(self, bypassed: bool = True) -> None:
+        """Bypass all master effects."""
+        self.audio_playback.bypass_master_effects(bypassed)
+
+    def reset_master_effects(self) -> None:
+        """Reset all master effects."""
+        self.audio_playback.reset_master_effects()
+
+    def clear_master_effects(self) -> None:
+        """Remove all effects from the master chain."""
+        self.audio_playback.clear_master_effects()
+
+    def is_master_effects_bypassed(self) -> bool:
+        """Check if master effects are bypassed."""
+        return self.audio_playback.is_master_effects_bypassed()
+
+    def get_available_effect_types(self) -> list:
+        """Get list of available effect types."""
+        return self.audio_playback.get_available_effect_types()
+
     # === Status ===
 
     def get_status(self) -> dict:
@@ -1247,6 +1360,255 @@ class WebSocketServer:
             return {'type': 'output_devices', 'data': {
                 'devices': devices,
                 'default': default
+            }}
+
+        # === Track Effects Commands ===
+        elif msg_type == 'add_track_effect':
+            track_id = payload.get('track_id')
+            effect_type = payload.get('effect_type')
+            if not track_id or not effect_type:
+                return {'type': 'add_track_effect_response', 'data': {
+                    'success': False,
+                    'error': 'track_id and effect_type are required'
+                }}
+            effect_id = self.engine.add_track_effect(
+                track_id=track_id,
+                effect_type=effect_type,
+                effect_id=payload.get('effect_id'),
+                position=payload.get('position')
+            )
+            return {'type': 'add_track_effect_response', 'data': {
+                'success': effect_id is not None,
+                'effect_id': effect_id,
+                'track_id': track_id
+            }}
+
+        elif msg_type == 'remove_track_effect':
+            track_id = payload.get('track_id')
+            effect_id = payload.get('effect_id')
+            if not track_id or not effect_id:
+                return {'type': 'remove_track_effect_response', 'data': {
+                    'success': False,
+                    'error': 'track_id and effect_id are required'
+                }}
+            success = self.engine.remove_track_effect(track_id, effect_id)
+            return {'type': 'remove_track_effect_response', 'data': {
+                'success': success,
+                'track_id': track_id,
+                'effect_id': effect_id
+            }}
+
+        elif msg_type == 'move_track_effect':
+            track_id = payload.get('track_id')
+            effect_id = payload.get('effect_id')
+            new_position = payload.get('position')
+            if not track_id or not effect_id or new_position is None:
+                return {'type': 'move_track_effect_response', 'data': {
+                    'success': False,
+                    'error': 'track_id, effect_id, and position are required'
+                }}
+            success = self.engine.move_track_effect(track_id, effect_id, new_position)
+            return {'type': 'move_track_effect_response', 'data': {
+                'success': success,
+                'track_id': track_id,
+                'effect_id': effect_id
+            }}
+
+        elif msg_type == 'set_track_effect_parameter':
+            track_id = payload.get('track_id')
+            effect_id = payload.get('effect_id')
+            param_name = payload.get('param_name')
+            value = payload.get('value')
+            if not all([track_id, effect_id, param_name, value is not None]):
+                return {'type': 'set_track_effect_parameter_response', 'data': {
+                    'success': False,
+                    'error': 'track_id, effect_id, param_name, and value are required'
+                }}
+            success = self.engine.set_track_effect_parameter(
+                track_id, effect_id, param_name, value
+            )
+            return {'type': 'set_track_effect_parameter_response', 'data': {
+                'success': success,
+                'track_id': track_id,
+                'effect_id': effect_id
+            }}
+
+        elif msg_type == 'get_track_effect_parameters':
+            track_id = payload.get('track_id')
+            effect_id = payload.get('effect_id')
+            if not track_id or not effect_id:
+                return {'type': 'get_track_effect_parameters_response', 'data': {
+                    'success': False,
+                    'error': 'track_id and effect_id are required'
+                }}
+            params = self.engine.get_track_effect_parameters(track_id, effect_id)
+            return {'type': 'get_track_effect_parameters_response', 'data': {
+                'success': params is not None,
+                'parameters': params,
+                'track_id': track_id,
+                'effect_id': effect_id
+            }}
+
+        elif msg_type == 'get_track_effects_chain':
+            track_id = payload.get('track_id')
+            if not track_id:
+                return {'type': 'get_track_effects_chain_response', 'data': {
+                    'success': False,
+                    'error': 'track_id is required'
+                }}
+            chain = self.engine.get_track_effects_chain(track_id)
+            return {'type': 'get_track_effects_chain_response', 'data': {
+                'success': True,
+                'chain': chain,
+                'track_id': track_id
+            }}
+
+        elif msg_type == 'bypass_track_effects':
+            track_id = payload.get('track_id')
+            bypassed = payload.get('bypassed', True)
+            if not track_id:
+                return {'type': 'bypass_track_effects_response', 'data': {
+                    'success': False,
+                    'error': 'track_id is required'
+                }}
+            success = self.engine.bypass_track_effects(track_id, bypassed)
+            return {'type': 'bypass_track_effects_response', 'data': {
+                'success': success,
+                'track_id': track_id,
+                'bypassed': bypassed
+            }}
+
+        elif msg_type == 'reset_track_effects':
+            track_id = payload.get('track_id')
+            if not track_id:
+                return {'type': 'reset_track_effects_response', 'data': {
+                    'success': False,
+                    'error': 'track_id is required'
+                }}
+            success = self.engine.reset_track_effects(track_id)
+            return {'type': 'reset_track_effects_response', 'data': {
+                'success': success,
+                'track_id': track_id
+            }}
+
+        elif msg_type == 'clear_track_effects':
+            track_id = payload.get('track_id')
+            if not track_id:
+                return {'type': 'clear_track_effects_response', 'data': {
+                    'success': False,
+                    'error': 'track_id is required'
+                }}
+            success = self.engine.clear_track_effects(track_id)
+            return {'type': 'clear_track_effects_response', 'data': {
+                'success': success,
+                'track_id': track_id
+            }}
+
+        # === Master Effects Commands ===
+        elif msg_type == 'add_master_effect':
+            effect_type = payload.get('effect_type')
+            if not effect_type:
+                return {'type': 'add_master_effect_response', 'data': {
+                    'success': False,
+                    'error': 'effect_type is required'
+                }}
+            effect_id = self.engine.add_master_effect(
+                effect_type=effect_type,
+                effect_id=payload.get('effect_id'),
+                position=payload.get('position')
+            )
+            return {'type': 'add_master_effect_response', 'data': {
+                'success': effect_id is not None,
+                'effect_id': effect_id
+            }}
+
+        elif msg_type == 'remove_master_effect':
+            effect_id = payload.get('effect_id')
+            if not effect_id:
+                return {'type': 'remove_master_effect_response', 'data': {
+                    'success': False,
+                    'error': 'effect_id is required'
+                }}
+            success = self.engine.remove_master_effect(effect_id)
+            return {'type': 'remove_master_effect_response', 'data': {
+                'success': success,
+                'effect_id': effect_id
+            }}
+
+        elif msg_type == 'move_master_effect':
+            effect_id = payload.get('effect_id')
+            new_position = payload.get('position')
+            if not effect_id or new_position is None:
+                return {'type': 'move_master_effect_response', 'data': {
+                    'success': False,
+                    'error': 'effect_id and position are required'
+                }}
+            success = self.engine.move_master_effect(effect_id, new_position)
+            return {'type': 'move_master_effect_response', 'data': {
+                'success': success,
+                'effect_id': effect_id
+            }}
+
+        elif msg_type == 'set_master_effect_parameter':
+            effect_id = payload.get('effect_id')
+            param_name = payload.get('param_name')
+            value = payload.get('value')
+            if not all([effect_id, param_name, value is not None]):
+                return {'type': 'set_master_effect_parameter_response', 'data': {
+                    'success': False,
+                    'error': 'effect_id, param_name, and value are required'
+                }}
+            success = self.engine.set_master_effect_parameter(effect_id, param_name, value)
+            return {'type': 'set_master_effect_parameter_response', 'data': {
+                'success': success,
+                'effect_id': effect_id
+            }}
+
+        elif msg_type == 'get_master_effect_parameters':
+            effect_id = payload.get('effect_id')
+            if not effect_id:
+                return {'type': 'get_master_effect_parameters_response', 'data': {
+                    'success': False,
+                    'error': 'effect_id is required'
+                }}
+            params = self.engine.get_master_effect_parameters(effect_id)
+            return {'type': 'get_master_effect_parameters_response', 'data': {
+                'success': params is not None,
+                'parameters': params,
+                'effect_id': effect_id
+            }}
+
+        elif msg_type == 'get_master_effects_chain':
+            chain = self.engine.get_master_effects_chain()
+            return {'type': 'get_master_effects_chain_response', 'data': {
+                'success': True,
+                'chain': chain
+            }}
+
+        elif msg_type == 'bypass_master_effects':
+            bypassed = payload.get('bypassed', True)
+            self.engine.bypass_master_effects(bypassed)
+            return {'type': 'bypass_master_effects_response', 'data': {
+                'success': True,
+                'bypassed': bypassed
+            }}
+
+        elif msg_type == 'reset_master_effects':
+            self.engine.reset_master_effects()
+            return {'type': 'reset_master_effects_response', 'data': {
+                'success': True
+            }}
+
+        elif msg_type == 'clear_master_effects':
+            self.engine.clear_master_effects()
+            return {'type': 'clear_master_effects_response', 'data': {
+                'success': True
+            }}
+
+        elif msg_type == 'get_available_effect_types':
+            effect_types = self.engine.get_available_effect_types()
+            return {'type': 'available_effect_types', 'data': {
+                'effect_types': effect_types
             }}
 
         elif msg_type == 'ping':

@@ -1,6 +1,7 @@
 """
 Audio Playback Module
 Handles playback of audio clips synchronized with transport timing.
+Includes per-track and master effects processing.
 """
 
 import time
@@ -8,10 +9,11 @@ import threading
 import numpy as np
 import sounddevice as sd
 from dataclasses import dataclass, field
-from typing import List, Dict, Optional, Callable, Tuple
+from typing import List, Dict, Optional, Callable, Tuple, Any
 from pathlib import Path
 
 from transport import Transport, TransportState
+from effects_processor import EffectsProcessor, EffectsProcessorConfig
 
 
 @dataclass
@@ -88,6 +90,17 @@ class AudioPlayback:
 
         # Master volume
         self.master_volume: float = 1.0
+
+        # === Effects Processing ===
+        # Per-track effects processors
+        self._track_effects: Dict[str, EffectsProcessor] = {}  # track_id -> EffectsProcessor
+
+        # Master effects processor (applied to final mix)
+        effects_config = EffectsProcessorConfig(
+            sample_rate=self.config.sample_rate,
+            buffer_size=self.config.buffer_size
+        )
+        self._master_effects = EffectsProcessor(effects_config)
 
         # Callbacks
         self._clip_started_callback: Optional[Callable[[str, str], None]] = None  # clip_id, track_id
@@ -390,9 +403,17 @@ class AudioPlayback:
 
     def _audio_callback(self, outdata: np.ndarray, frames: int,
                         time_info: dict, status: sd.CallbackFlags) -> None:
-        """Internal callback called by sounddevice for output."""
+        """Internal callback called by sounddevice for output.
+
+        Audio processing chain:
+        1. Mix clips per-track into track buffers
+        2. Apply per-track effects to each track buffer
+        3. Sum all track outputs with volume/pan
+        4. Apply master effects to final mix
+        5. Apply master volume and clip output
+        """
         if status:
-            print(f"Audio playback status: {status}")
+            pass  # Silently ignore status messages in production
 
         # Fill with silence first
         outdata.fill(0)
@@ -402,7 +423,7 @@ class AudioPlayback:
 
         current_tick = self.transport.current_tick
 
-        # Process scheduled events
+        # Process scheduled events and mix audio
         with self._lock:
             # Check for new clips to start
             while (self._event_index < len(self._events) and
@@ -424,8 +445,8 @@ class AudioPlayback:
                             try:
                                 self._clip_started_callback(event.clip_data.clip_id,
                                                            event.clip_data.track_id)
-                            except Exception as e:
-                                print(f"Clip started callback error: {e}")
+                            except Exception:
+                                pass  # Silently ignore callback errors in audio thread
 
                 elif event.event_type == 'stop':
                     if event.clip_data.clip_id in self._active_clips:
@@ -435,12 +456,13 @@ class AudioPlayback:
                             try:
                                 self._clip_ended_callback(event.clip_data.clip_id,
                                                          event.clip_data.track_id)
-                            except Exception as e:
-                                print(f"Clip ended callback error: {e}")
+                            except Exception:
+                                pass  # Silently ignore callback errors in audio thread
 
                 self._event_index += 1
 
-            # Mix all active clips
+            # Group clips by track for per-track effects processing
+            track_clips: Dict[str, List[Tuple[AudioClipData, int]]] = {}
             clips_to_remove = []
 
             for clip_id, sample_pos in self._active_clips.items():
@@ -463,27 +485,10 @@ class AudioPlayback:
                     clips_to_remove.append(clip_id)
                     continue
 
-                # Get audio data
-                audio_chunk = clip.audio_data[sample_pos:sample_pos + samples_to_read]
-
-                # Apply volume (clip * track * master)
-                total_volume = clip.volume * track_settings['volume'] * self.master_volume
-
-                # Calculate pan gains
-                clip_pan = clip.pan + track_settings['pan']
-                clip_pan = max(-1.0, min(1.0, clip_pan))
-                left_gain = total_volume * (1.0 - max(0, clip_pan))
-                right_gain = total_volume * (1.0 + min(0, clip_pan))
-
-                # Mix into output buffer
-                if clip.is_stereo:
-                    # Stereo clip
-                    outdata[:samples_to_read, 0] += audio_chunk[:, 0] * left_gain
-                    outdata[:samples_to_read, 1] += audio_chunk[:, 1] * right_gain
-                else:
-                    # Mono clip - pan to stereo
-                    outdata[:samples_to_read, 0] += audio_chunk * left_gain
-                    outdata[:samples_to_read, 1] += audio_chunk * right_gain
+                # Group by track
+                if clip.track_id not in track_clips:
+                    track_clips[clip.track_id] = []
+                track_clips[clip.track_id].append((clip, sample_pos))
 
                 # Update position
                 self._active_clips[clip_id] = sample_pos + samples_to_read
@@ -491,6 +496,65 @@ class AudioPlayback:
                 # Check if clip ended
                 if sample_pos + samples_to_read >= clip.duration_samples:
                     clips_to_remove.append(clip_id)
+
+            # Process each track's audio through its effects chain
+            for track_id, clips in track_clips.items():
+                # Create track buffer
+                track_buffer = np.zeros((frames, 2), dtype=np.float32)
+
+                # Get track settings
+                track_settings = self._track_settings.get(track_id,
+                    {'volume': 1.0, 'pan': 0.0, 'muted': False})
+
+                # Mix all clips for this track (pre-effects, pre-track-volume)
+                for clip, sample_pos in clips:
+                    samples_remaining = clip.duration_samples - sample_pos
+                    samples_to_read = min(frames, samples_remaining)
+
+                    if samples_to_read <= 0:
+                        continue
+
+                    # Get audio data
+                    audio_chunk = clip.audio_data[sample_pos:sample_pos + samples_to_read]
+
+                    # Apply clip volume only (track volume applied post-effects)
+                    clip_volume = clip.volume
+
+                    # Calculate clip pan gains
+                    clip_pan = max(-1.0, min(1.0, clip.pan))
+                    left_gain = clip_volume * (1.0 - max(0, clip_pan))
+                    right_gain = clip_volume * (1.0 + min(0, clip_pan))
+
+                    # Mix into track buffer
+                    if clip.is_stereo:
+                        track_buffer[:samples_to_read, 0] += audio_chunk[:, 0] * left_gain
+                        track_buffer[:samples_to_read, 1] += audio_chunk[:, 1] * right_gain
+                    else:
+                        track_buffer[:samples_to_read, 0] += audio_chunk * left_gain
+                        track_buffer[:samples_to_read, 1] += audio_chunk * right_gain
+
+                # Apply track effects if any
+                if track_id in self._track_effects:
+                    track_effects = self._track_effects[track_id]
+                    if track_effects.effect_count > 0 and not track_effects.is_bypassed():
+                        track_buffer = track_effects.process(track_buffer)
+
+                # Apply track volume and pan, then mix into output
+                track_volume = track_settings['volume']
+                track_pan = max(-1.0, min(1.0, track_settings['pan']))
+                left_track_gain = track_volume * (1.0 - max(0, track_pan))
+                right_track_gain = track_volume * (1.0 + min(0, track_pan))
+
+                outdata[:, 0] += track_buffer[:, 0] * left_track_gain
+                outdata[:, 1] += track_buffer[:, 1] * right_track_gain
+
+            # Apply master effects if any
+            if self._master_effects.effect_count > 0 and not self._master_effects.is_bypassed():
+                processed = self._master_effects.process(outdata)
+                outdata[:] = processed
+
+            # Apply master volume
+            outdata *= self.master_volume
 
             # Remove finished clips
             for clip_id in clips_to_remove:
@@ -500,8 +564,8 @@ class AudioPlayback:
                     if clip and self._clip_ended_callback:
                         try:
                             self._clip_ended_callback(clip_id, clip.track_id)
-                        except Exception as e:
-                            print(f"Clip ended callback error: {e}")
+                        except Exception:
+                            pass  # Silently ignore callback errors in audio thread
 
         # Clip output to prevent distortion
         np.clip(outdata, -1.0, 1.0, out=outdata)
@@ -566,6 +630,233 @@ class AudioPlayback:
         except Exception:
             pass
         return None
+
+    # === Track Effects Management ===
+
+    def _get_or_create_track_effects(self, track_id: str) -> EffectsProcessor:
+        """Get or create an effects processor for a track."""
+        if track_id not in self._track_effects:
+            effects_config = EffectsProcessorConfig(
+                sample_rate=self.config.sample_rate,
+                buffer_size=self.config.buffer_size
+            )
+            self._track_effects[track_id] = EffectsProcessor(effects_config)
+        return self._track_effects[track_id]
+
+    def add_track_effect(self, track_id: str, effect_type: str,
+                         effect_id: Optional[str] = None,
+                         position: Optional[int] = None) -> Optional[str]:
+        """
+        Add an effect to a track's effect chain.
+
+        Args:
+            track_id: ID of the track
+            effect_type: Type of effect ('eq3band', 'compressor', 'delay', 'reverb')
+            effect_id: Optional ID for the effect (auto-generated if not provided)
+            position: Optional position in chain (appended if not provided)
+
+        Returns:
+            Effect ID if successful, None if effect type not found
+        """
+        processor = self._get_or_create_track_effects(track_id)
+        return processor.add_effect(effect_type, effect_id, position)
+
+    def remove_track_effect(self, track_id: str, effect_id: str) -> bool:
+        """
+        Remove an effect from a track's effect chain.
+
+        Args:
+            track_id: ID of the track
+            effect_id: ID of the effect to remove
+
+        Returns:
+            True if removed, False if not found
+        """
+        if track_id not in self._track_effects:
+            return False
+        return self._track_effects[track_id].remove_effect(effect_id)
+
+    def move_track_effect(self, track_id: str, effect_id: str,
+                          new_position: int) -> bool:
+        """
+        Move an effect to a new position in a track's effect chain.
+
+        Args:
+            track_id: ID of the track
+            effect_id: ID of the effect to move
+            new_position: New position in chain
+
+        Returns:
+            True if moved, False if not found
+        """
+        if track_id not in self._track_effects:
+            return False
+        return self._track_effects[track_id].move_effect(effect_id, new_position)
+
+    def set_track_effect_parameter(self, track_id: str, effect_id: str,
+                                    param_name: str, value: float) -> bool:
+        """
+        Set a parameter on a track's effect.
+
+        Args:
+            track_id: ID of the track
+            effect_id: ID of the effect
+            param_name: Name of the parameter
+            value: New value
+
+        Returns:
+            True if set, False if not found
+        """
+        if track_id not in self._track_effects:
+            return False
+        return self._track_effects[track_id].set_effect_parameter(
+            effect_id, param_name, value
+        )
+
+    def get_track_effect_parameters(self, track_id: str,
+                                     effect_id: str) -> Optional[Dict[str, Any]]:
+        """Get parameters of a track's effect."""
+        if track_id not in self._track_effects:
+            return None
+        return self._track_effects[track_id].get_effect_parameters(effect_id)
+
+    def get_track_effects_chain(self, track_id: str) -> List[Dict[str, Any]]:
+        """Get information about all effects in a track's chain."""
+        if track_id not in self._track_effects:
+            return []
+        return self._track_effects[track_id].get_chain_info()
+
+    def bypass_track_effects(self, track_id: str, bypassed: bool = True) -> bool:
+        """
+        Bypass all effects for a track.
+
+        Args:
+            track_id: ID of the track
+            bypassed: Whether to bypass
+
+        Returns:
+            True if track exists
+        """
+        if track_id not in self._track_effects:
+            return False
+        self._track_effects[track_id].bypass(bypassed)
+        return True
+
+    def reset_track_effects(self, track_id: str) -> bool:
+        """
+        Reset all effects in a track's chain (clear buffers/state).
+
+        Args:
+            track_id: ID of the track
+
+        Returns:
+            True if track exists
+        """
+        if track_id not in self._track_effects:
+            return False
+        self._track_effects[track_id].reset()
+        return True
+
+    def clear_track_effects(self, track_id: str) -> bool:
+        """
+        Remove all effects from a track's chain.
+
+        Args:
+            track_id: ID of the track
+
+        Returns:
+            True if track exists
+        """
+        if track_id not in self._track_effects:
+            return False
+        self._track_effects[track_id].clear()
+        return True
+
+    # === Master Effects Management ===
+
+    def add_master_effect(self, effect_type: str,
+                          effect_id: Optional[str] = None,
+                          position: Optional[int] = None) -> Optional[str]:
+        """
+        Add an effect to the master effect chain.
+
+        Args:
+            effect_type: Type of effect ('eq3band', 'compressor', 'delay', 'reverb')
+            effect_id: Optional ID for the effect (auto-generated if not provided)
+            position: Optional position in chain (appended if not provided)
+
+        Returns:
+            Effect ID if successful, None if effect type not found
+        """
+        return self._master_effects.add_effect(effect_type, effect_id, position)
+
+    def remove_master_effect(self, effect_id: str) -> bool:
+        """
+        Remove an effect from the master effect chain.
+
+        Args:
+            effect_id: ID of the effect to remove
+
+        Returns:
+            True if removed, False if not found
+        """
+        return self._master_effects.remove_effect(effect_id)
+
+    def move_master_effect(self, effect_id: str, new_position: int) -> bool:
+        """
+        Move an effect to a new position in the master effect chain.
+
+        Args:
+            effect_id: ID of the effect to move
+            new_position: New position in chain
+
+        Returns:
+            True if moved, False if not found
+        """
+        return self._master_effects.move_effect(effect_id, new_position)
+
+    def set_master_effect_parameter(self, effect_id: str,
+                                     param_name: str, value: float) -> bool:
+        """
+        Set a parameter on a master effect.
+
+        Args:
+            effect_id: ID of the effect
+            param_name: Name of the parameter
+            value: New value
+
+        Returns:
+            True if set, False if not found
+        """
+        return self._master_effects.set_effect_parameter(effect_id, param_name, value)
+
+    def get_master_effect_parameters(self, effect_id: str) -> Optional[Dict[str, Any]]:
+        """Get parameters of a master effect."""
+        return self._master_effects.get_effect_parameters(effect_id)
+
+    def get_master_effects_chain(self) -> List[Dict[str, Any]]:
+        """Get information about all effects in the master chain."""
+        return self._master_effects.get_chain_info()
+
+    def bypass_master_effects(self, bypassed: bool = True) -> None:
+        """Bypass all master effects."""
+        self._master_effects.bypass(bypassed)
+
+    def reset_master_effects(self) -> None:
+        """Reset all master effects (clear buffers/state)."""
+        self._master_effects.reset()
+
+    def clear_master_effects(self) -> None:
+        """Remove all effects from the master chain."""
+        self._master_effects.clear()
+
+    def is_master_effects_bypassed(self) -> bool:
+        """Check if master effects are bypassed."""
+        return self._master_effects.is_bypassed()
+
+    def get_available_effect_types(self) -> List[str]:
+        """Get list of available effect types."""
+        return list(EffectsProcessor.EFFECT_TYPES.keys())
 
 
 # Standalone test
