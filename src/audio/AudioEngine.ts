@@ -313,6 +313,9 @@ export class AudioEngine {
     if (muted !== undefined) {
       settings.muted = muted;
     }
+    // Track if solo state changed to know if we need to reapply all track gains
+    let soloStateChanged = false;
+
     if (solo !== undefined) {
       const wasSoloed = settings.solo;
       settings.solo = solo;
@@ -320,14 +323,21 @@ export class AudioEngine {
       // Update solo tracking
       if (solo && !wasSoloed) {
         this.soloedTrackIds.add(trackId);
+        soloStateChanged = true;
       } else if (!solo && wasSoloed) {
         this.soloedTrackIds.delete(trackId);
+        soloStateChanged = true;
       }
       this.hasSoloedTrack = this.soloedTrackIds.size > 0;
     }
 
     // Apply effective gain (considering mute and solo)
-    this.applyTrackGain(trackId);
+    // When solo state changes, reapply gains to ALL tracks so non-soloed tracks get muted
+    if (soloStateChanged) {
+      this.reapplyAllTrackGains();
+    } else {
+      this.applyTrackGain(trackId);
+    }
   }
 
   /**
