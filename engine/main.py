@@ -127,8 +127,18 @@ class BeatBoxDawEngine:
         self.transport.add_state_callback(self._on_transport_state_change)
 
         # Position broadcast throttling (broadcast every ~50ms)
-        self._last_position_broadcast = 0
+        # Use perf_counter for higher precision timing (matches transport.py pattern)
+        self._last_position_broadcast = time.perf_counter()
         self._position_broadcast_interval = 0.05  # 50ms
+
+        # Valid state transitions for transport controls
+        self._valid_state_transitions = {
+            TransportState.STOPPED: [TransportState.PLAYING, TransportState.RECORDING, TransportState.PRE_ROLL],
+            TransportState.PLAYING: [TransportState.PAUSED, TransportState.STOPPED, TransportState.RECORDING],
+            TransportState.PAUSED: [TransportState.PLAYING, TransportState.STOPPED],
+            TransportState.RECORDING: [TransportState.STOPPED, TransportState.PAUSED],
+            TransportState.PRE_ROLL: [TransportState.STOPPED, TransportState.RECORDING],
+        }
 
     # === BeatBox Detection ===
 
@@ -214,26 +224,47 @@ class BeatBoxDawEngine:
     # === Transport Broadcast Callbacks ===
 
     def _on_transport_position(self, tick: int):
-        """Broadcast transport position to all clients (throttled)."""
-        current_time = time.time()
+        """Broadcast transport position to all clients (throttled).
+
+        Uses perf_counter for high-precision timing to match transport.py pattern.
+        Includes bar/beat information for accurate frontend synchronization.
+        """
+        current_time = time.perf_counter()
         if current_time - self._last_position_broadcast >= self._position_broadcast_interval:
             self._last_position_broadcast = current_time
+
+            # Get bar and beat for enhanced position data
+            bar, beat = self.transport._ticks_to_bar_beat(max(0, tick))
+
             asyncio.create_task(self.broadcast({
                 'type': 'transport_position',
                 'data': {
                     'tick': tick,
+                    'bar': bar,
+                    'beat': beat,
                     'state': self.transport.state.value,
-                    'bpm': self.transport.bpm
+                    'bpm': self.transport.bpm,
+                    'timestamp': current_time  # High-precision timestamp for sync
                 }
             }))
 
-    def _on_transport_state_change(self, state):
-        """Broadcast transport state change to all clients."""
+    def _on_transport_state_change(self, state: TransportState):
+        """Broadcast transport state change to all clients.
+
+        Includes full position and timing data for accurate frontend synchronization.
+        """
+        current_tick = self.transport.current_tick
+        bar, beat = self.transport._ticks_to_bar_beat(max(0, current_tick))
+
         asyncio.create_task(self.broadcast({
             'type': 'transport_state',
             'data': {
                 'state': state.value,
-                'tick': self.transport.current_tick
+                'tick': current_tick,
+                'bar': bar,
+                'beat': beat,
+                'bpm': self.transport.bpm,
+                'timestamp': time.perf_counter()
             }
         }))
 
@@ -311,27 +342,89 @@ class BeatBoxDawEngine:
 
     # === DAW Transport Controls ===
 
+    def _validate_state_transition(self, target_state: TransportState) -> bool:
+        """Validate if a state transition is allowed.
+
+        Args:
+            target_state: The target state to transition to.
+
+        Returns:
+            True if transition is valid, False otherwise.
+        """
+        current_state = self.transport.state
+        if current_state == target_state:
+            return True  # Already in target state
+        valid_targets = self._valid_state_transitions.get(current_state, [])
+        return target_state in valid_targets
+
     def transport_play(self) -> bool:
-        """Start DAW playback."""
+        """Start DAW playback.
+
+        Validates state transition before starting playback.
+        Returns False if transition is not valid.
+        """
+        if not self._validate_state_transition(TransportState.PLAYING):
+            return False
+
         if self._project:
             self.scheduler.load_project(self._project)
         return self.transport.play()
 
-    def transport_pause(self):
-        """Pause DAW playback."""
-        self.transport.pause()
+    def transport_pause(self) -> bool:
+        """Pause DAW playback.
 
-    def transport_stop(self):
-        """Stop DAW playback."""
+        Validates state transition before pausing.
+        Returns True on success, False if transition is not valid.
+        """
+        if not self._validate_state_transition(TransportState.PAUSED):
+            return False
+
+        self.transport.pause()
+        return True
+
+    def transport_stop(self) -> bool:
+        """Stop DAW playback.
+
+        Always succeeds as stop is valid from any state.
+        Returns True on success.
+        """
+        # Stop is always valid - it resets to initial state
         self.transport.stop()
+        return True
 
     def transport_record(self) -> bool:
-        """Toggle DAW recording."""
+        """Toggle DAW recording.
+
+        Validates state transition before starting recording.
+        Returns True if recording started, False otherwise.
+        """
+        current_state = self.transport.state
+        # If already recording or in pre-roll, we're stopping - always valid
+        if current_state in (TransportState.RECORDING, TransportState.PRE_ROLL):
+            return self.transport.record()
+
+        # Starting recording - validate transition
+        if not self._validate_state_transition(TransportState.RECORDING) and \
+           not self._validate_state_transition(TransportState.PRE_ROLL):
+            return False
+
         return self.transport.record()
 
-    def transport_seek(self, tick: int):
-        """Seek to position."""
+    def transport_seek(self, tick: int) -> bool:
+        """Seek to position.
+
+        Validates the tick value before seeking.
+
+        Args:
+            tick: Position in ticks to seek to (must be non-negative).
+
+        Returns:
+            True on success, False if tick is invalid.
+        """
+        if tick < 0:
+            return False
         self.transport.seek(tick)
+        return True
 
     # === Project Management ===
 
@@ -560,12 +653,12 @@ class WebSocketServer:
             return {'type': 'transport_play_response', 'data': {'success': success}}
 
         elif msg_type == 'transport_pause':
-            self.engine.transport_pause()
-            return {'type': 'transport_pause_response', 'data': {'success': True}}
+            success = self.engine.transport_pause()
+            return {'type': 'transport_pause_response', 'data': {'success': success}}
 
         elif msg_type == 'transport_stop':
-            self.engine.transport_stop()
-            return {'type': 'transport_stop_response', 'data': {'success': True}}
+            success = self.engine.transport_stop()
+            return {'type': 'transport_stop_response', 'data': {'success': success}}
 
         elif msg_type == 'transport_record':
             recording = self.engine.transport_record()
@@ -573,8 +666,8 @@ class WebSocketServer:
 
         elif msg_type == 'transport_seek':
             tick = payload.get('tick', 0)
-            self.engine.transport_seek(tick)
-            return {'type': 'transport_seek_response', 'data': {'success': True}}
+            success = self.engine.transport_seek(tick)
+            return {'type': 'transport_seek_response', 'data': {'success': success, 'tick': tick}}
 
         elif msg_type == 'set_bpm':
             bpm = payload.get('bpm', 120)
