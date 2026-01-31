@@ -2,6 +2,12 @@
  * Transport Store
  * Zustand store for managing DAW transport (playback) state
  * Syncs with backend via WebSocket
+ *
+ * Sync Strategy:
+ * - Backend broadcasts position every ~50ms during playback
+ * - Frontend interpolates position between syncs for smooth playhead
+ * - Drift detection corrects position if frontend drifts > 50ms from backend
+ * - BPM is used for local position calculation between syncs
  */
 
 import { create } from 'zustand';
@@ -9,6 +15,10 @@ import { LoopRegion, TransportState, TICKS_PER_BEAT } from '../types/project';
 
 // WebSocket send function type
 type WebSocketSendFn = (type: string, data?: Record<string, unknown>) => void;
+
+// Sync configuration constants
+const SYNC_DRIFT_THRESHOLD_TICKS = 24; // ~50ms at 120 BPM (480 ticks/sec / 10 = 48 ticks/100ms)
+const SYNC_INTERPOLATION_ENABLED = true;
 
 interface TransportStoreState {
   // Transport state
@@ -30,6 +40,12 @@ interface TransportStoreState {
 
   // Playback
   isFollowPlayhead: boolean;
+
+  // Backend sync state
+  _lastSyncTick: number;
+  _lastSyncTime: number;
+  _bpm: number;
+  _syncDriftCount: number;
 
   // WebSocket connection
   _wsSend: WebSocketSendFn | null;
@@ -69,7 +85,13 @@ interface TransportActions {
 
   // WebSocket sync
   setWebSocket: (sendFn: WebSocketSendFn | null, isConnected: boolean) => void;
-  syncFromBackend: (tick: number, state: TransportState) => void;
+  syncFromBackend: (tick: number, state: TransportState, bpm?: number) => void;
+
+  // Improved sync methods
+  setBpm: (bpm: number) => void;
+  getInterpolatedTick: () => number;
+  requestSync: () => void;
+  handlePositionBroadcast: (tick: number, timestamp?: number, bpm?: number, transportState?: TransportState) => void;
 }
 
 export const useTransportStore = create<TransportStoreState & TransportActions>()((set, get) => ({
@@ -92,6 +114,12 @@ export const useTransportStore = create<TransportStoreState & TransportActions>(
   preRollBars: 1,
 
   isFollowPlayhead: true,
+
+  // Backend sync state
+  _lastSyncTick: 0,
+  _lastSyncTime: 0,
+  _bpm: 120,
+  _syncDriftCount: 0,
 
   _wsSend: null,
   _isConnected: false,
@@ -290,14 +318,137 @@ export const useTransportStore = create<TransportStoreState & TransportActions>(
       _wsSend: sendFn,
       _isConnected: isConnected,
     });
+
+    // Request initial sync when connected
+    if (isConnected && sendFn) {
+      sendFn('get_transport_state');
+    }
   },
 
-  syncFromBackend: (tick, state) => {
+  syncFromBackend: (tick, state, bpm) => {
+    const now = performance.now();
+
     // Update local state from backend without triggering WebSocket messages
     set({
       currentTick: tick,
       state: state,
       startTime: state === 'playing' || state === 'recording' ? Date.now() : null,
+      _lastSyncTick: tick,
+      _lastSyncTime: now,
+      _bpm: bpm ?? get()._bpm,
+      _syncDriftCount: 0, // Reset drift counter on full sync
     });
+  },
+
+  // === Improved Sync Methods ===
+  setBpm: (bpm) => {
+    const newBpm = Math.max(20, Math.min(300, bpm));
+    set({ _bpm: newBpm });
+  },
+
+  getInterpolatedTick: () => {
+    const { state, currentTick, _lastSyncTick, _lastSyncTime, _bpm, loopRegion } = get();
+
+    // Only interpolate during playback
+    if (state !== 'playing' && state !== 'recording') {
+      return currentTick;
+    }
+
+    if (!SYNC_INTERPOLATION_ENABLED || _lastSyncTime === 0) {
+      return currentTick;
+    }
+
+    // Calculate elapsed time since last sync
+    const now = performance.now();
+    const elapsedMs = now - _lastSyncTime;
+
+    // Calculate ticks elapsed based on BPM
+    // At 120 BPM: 480 ticks/beat * 120 beats/min = 57600 ticks/min = 960 ticks/sec
+    const ticksPerSecond = (TICKS_PER_BEAT * _bpm) / 60;
+    const ticksElapsed = (elapsedMs / 1000) * ticksPerSecond;
+
+    let interpolatedTick = _lastSyncTick + ticksElapsed;
+
+    // Handle loop wrapping
+    if (loopRegion.enabled && interpolatedTick >= loopRegion.endTick) {
+      const loopLength = loopRegion.endTick - loopRegion.startTick;
+      if (loopLength > 0) {
+        const ticksPastLoop = interpolatedTick - loopRegion.startTick;
+        interpolatedTick = loopRegion.startTick + (ticksPastLoop % loopLength);
+      }
+    }
+
+    return Math.max(0, interpolatedTick);
+  },
+
+  requestSync: () => {
+    const { _wsSend, _isConnected } = get();
+
+    if (_isConnected && _wsSend) {
+      _wsSend('get_transport_state');
+    }
+  },
+
+  handlePositionBroadcast: (tick, timestamp, bpm, transportState) => {
+    const now = performance.now();
+    const {
+      state: currentState,
+      currentTick,
+      _bpm: currentBpm,
+      _syncDriftCount,
+      loopRegion,
+    } = get();
+
+    // Check for drift - difference between backend position and our interpolated position
+    const interpolatedTick = get().getInterpolatedTick();
+    const drift = Math.abs(tick - interpolatedTick);
+
+    // Detect if we've drifted beyond threshold
+    const hasDrifted = drift > SYNC_DRIFT_THRESHOLD_TICKS;
+
+    // Update state based on whether we detect drift
+    if (hasDrifted) {
+      // Hard correction - snap to backend position
+      set({
+        currentTick: tick,
+        _lastSyncTick: tick,
+        _lastSyncTime: now,
+        _bpm: bpm ?? currentBpm,
+        _syncDriftCount: _syncDriftCount + 1,
+        // Update transport state if provided and different
+        ...(transportState && transportState !== currentState
+          ? {
+              state: transportState,
+              startTime: transportState === 'playing' || transportState === 'recording' ? Date.now() : null,
+            }
+          : {}),
+      });
+    } else {
+      // Soft update - just update sync reference for interpolation
+      set({
+        _lastSyncTick: tick,
+        _lastSyncTime: now,
+        _bpm: bpm ?? currentBpm,
+        // Also update currentTick to keep it reasonably in sync for components
+        // that directly read currentTick instead of using getInterpolatedTick
+        currentTick: tick,
+        // Update transport state if provided and different
+        ...(transportState && transportState !== currentState
+          ? {
+              state: transportState,
+              startTime: transportState === 'playing' || transportState === 'recording' ? Date.now() : null,
+            }
+          : {}),
+      });
+    }
+
+    // Handle loop boundary - if backend wrapped, we should too
+    if (loopRegion.enabled && currentTick > loopRegion.endTick - SYNC_DRIFT_THRESHOLD_TICKS && tick < loopRegion.startTick + SYNC_DRIFT_THRESHOLD_TICKS) {
+      set({
+        currentTick: tick,
+        _lastSyncTick: tick,
+        _lastSyncTime: now,
+      });
+    }
   },
 }));
