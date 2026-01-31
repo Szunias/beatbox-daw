@@ -183,8 +183,8 @@ class BeatBoxDawEngine:
         # Valid state transitions for transport controls
         self._valid_state_transitions = {
             TransportState.STOPPED: [TransportState.PLAYING, TransportState.RECORDING, TransportState.PRE_ROLL],
-            TransportState.PLAYING: [TransportState.PAUSED, TransportState.STOPPED, TransportState.RECORDING],
-            TransportState.PAUSED: [TransportState.PLAYING, TransportState.STOPPED],
+            TransportState.PLAYING: [TransportState.PAUSED, TransportState.STOPPED, TransportState.RECORDING, TransportState.PRE_ROLL],
+            TransportState.PAUSED: [TransportState.PLAYING, TransportState.STOPPED, TransportState.RECORDING, TransportState.PRE_ROLL],
             TransportState.RECORDING: [TransportState.STOPPED, TransportState.PAUSED],
             TransportState.PRE_ROLL: [TransportState.STOPPED, TransportState.RECORDING],
         }
