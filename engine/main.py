@@ -857,6 +857,36 @@ class WebSocketServer:
             clip = self.engine.add_beatbox_clip(track_id, start_tick)
             return {'type': 'clip_added', 'data': clip}
 
+        # === Audio Track Recording Commands ===
+        elif msg_type == 'start_track_recording':
+            track_id = payload.get('track_id')
+            if not track_id:
+                return {'type': 'start_track_recording_response', 'data': {
+                    'success': False,
+                    'error': 'track_id is required'
+                }}
+            success = self.engine.start_track_recording(track_id)
+            return {'type': 'start_track_recording_response', 'data': {
+                'success': success,
+                'track_id': track_id
+            }}
+
+        elif msg_type == 'stop_track_recording':
+            result = self.engine.stop_track_recording()
+            if result:
+                return {'type': 'stop_track_recording_response', 'data': {
+                    'success': True,
+                    **result
+                }}
+            return {'type': 'stop_track_recording_response', 'data': {
+                'success': False,
+                'error': 'No active recording'
+            }}
+
+        elif msg_type == 'get_track_recording_info':
+            info = self.engine.get_track_recording_info()
+            return {'type': 'track_recording_info', 'data': info}
+
         elif msg_type == 'ping':
             return {'type': 'pong', 'data': {}}
 
