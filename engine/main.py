@@ -20,6 +20,7 @@ import time
 from audio_capture import AudioCapture, AudioConfig
 from audio_recorder import AudioRecorder, RecordingConfig, RecordingMetadata
 from audio_playback import AudioPlayback, AudioPlaybackConfig
+from audio_export import AudioExporter, ExportConfig, ExportProgress, ExportState
 from onset_detector import OnsetDetector, OnsetConfig
 from classifier.inference import BeatboxClassifier, RuleBasedClassifier, InferenceConfig
 from midi_output import MidiOutput, MidiEvent
@@ -148,6 +149,21 @@ class BeatBoxDawEngine:
 
         # Setup audio recorder callbacks
         self.audio_recorder.on_recording_stopped = self._on_audio_recording_stopped
+
+        # === Audio Export ===
+
+        # Audio exporter for offline rendering and mixdown
+        export_config = ExportConfig(
+            sample_rate=self.config.sample_rate,
+            channels=2,  # Stereo output
+            bit_depth=16,
+            normalize=True
+        )
+        self.audio_exporter = AudioExporter(export_config)
+
+        # Setup exporter callbacks
+        self.audio_exporter.set_progress_callback(self._on_export_progress)
+        self.audio_exporter.set_completed_callback(self._on_export_completed)
 
         # WebSocket clients
         self.clients: Set[WebSocketServerProtocol] = set()
@@ -1062,6 +1078,188 @@ class BeatBoxDawEngine:
                     'reason': 'max_duration_reached'
                 }
             }))
+
+    # === Audio Export Callbacks ===
+
+    def _on_export_progress(self, progress: ExportProgress) -> None:
+        """Callback for export progress updates."""
+        asyncio.create_task(self.broadcast({
+            'type': 'export_progress',
+            'data': {
+                'state': progress.state.value,
+                'progress': progress.progress,
+                'current_sample': progress.current_sample,
+                'total_samples': progress.total_samples,
+                'elapsed_seconds': progress.elapsed_seconds
+            }
+        }))
+
+    def _on_export_completed(self, filepath: str, success: bool, error: Optional[str]) -> None:
+        """Callback for export completion."""
+        asyncio.create_task(self.broadcast({
+            'type': 'export_completed',
+            'data': {
+                'filepath': filepath,
+                'success': success,
+                'error': error
+            }
+        }))
+
+    # === Audio Export Methods ===
+
+    def prepare_export(self) -> bool:
+        """
+        Prepare audio export by loading all audio clips from the current project.
+        Copies track settings and clip data to the exporter.
+
+        Returns:
+            True if export preparation successful
+        """
+        if not self._project:
+            return False
+
+        # Clear previous export data
+        self.audio_exporter.clear_clips()
+
+        # Get sample rate and timing info
+        sample_rate = self.config.sample_rate
+        ppqn = self.transport.ticks_per_beat
+        bpm = self.transport.bpm
+        samples_per_tick = (sample_rate * 60.0) / (bpm * ppqn)
+
+        # Load clips from all tracks
+        clip_count = 0
+        for track in self._project.tracks:
+            # Set track settings for export
+            self.audio_exporter.set_track_settings(
+                track_id=track.id,
+                volume=track.volume,
+                pan=track.pan,
+                muted=track.muted
+            )
+
+            # Load audio clips from playback system
+            for clip in track.clips:
+                if clip.type == 'audio' and clip.audio_data:
+                    # Get clip audio data from audio playback if loaded
+                    playback_clip = self.audio_playback._clips.get(clip.id)
+                    if playback_clip and playback_clip.audio_data is not None:
+                        # Calculate start position in samples
+                        start_sample = int(clip.start_tick * samples_per_tick)
+
+                        # Add clip to exporter
+                        success = self.audio_exporter.add_clip(
+                            clip_id=clip.id,
+                            track_id=track.id,
+                            audio_data=playback_clip.audio_data,
+                            sample_rate=sample_rate,
+                            start_sample=start_sample,
+                            volume=clip.audio_data.get('volume', 1.0) if isinstance(clip.audio_data, dict) else 1.0,
+                            pan=clip.audio_data.get('pan', 0.0) if isinstance(clip.audio_data, dict) else 0.0,
+                            muted=track.muted
+                        )
+                        if success:
+                            clip_count += 1
+
+        # Set master volume
+        self.audio_exporter.master_volume = self.audio_playback.master_volume
+
+        return clip_count > 0
+
+    def export_audio(self, filepath: str, start_tick: int = 0,
+                     end_tick: Optional[int] = None) -> bool:
+        """
+        Export audio to a WAV file (blocking).
+
+        Args:
+            filepath: Output file path
+            start_tick: Start position in ticks (default: 0)
+            end_tick: End position in ticks (default: auto-detect)
+
+        Returns:
+            True if export completed successfully
+        """
+        # Prepare export with current project data
+        if not self.prepare_export():
+            return False
+
+        # Convert ticks to samples
+        sample_rate = self.config.sample_rate
+        ppqn = self.transport.ticks_per_beat
+        bpm = self.transport.bpm
+        samples_per_tick = (sample_rate * 60.0) / (bpm * ppqn)
+
+        start_sample = int(start_tick * samples_per_tick)
+        end_sample = int(end_tick * samples_per_tick) if end_tick is not None else None
+
+        # Perform export
+        return self.audio_exporter.export_to_wav(filepath, start_sample, end_sample)
+
+    def export_audio_async(self, filepath: str, start_tick: int = 0,
+                           end_tick: Optional[int] = None) -> bool:
+        """
+        Start async audio export to a WAV file (non-blocking).
+
+        Args:
+            filepath: Output file path
+            start_tick: Start position in ticks (default: 0)
+            end_tick: End position in ticks (default: auto-detect)
+
+        Returns:
+            True if export started successfully
+        """
+        # Prepare export with current project data
+        if not self.prepare_export():
+            return False
+
+        # Convert ticks to samples
+        sample_rate = self.config.sample_rate
+        ppqn = self.transport.ticks_per_beat
+        bpm = self.transport.bpm
+        samples_per_tick = (sample_rate * 60.0) / (bpm * ppqn)
+
+        start_sample = int(start_tick * samples_per_tick)
+        end_sample = int(end_tick * samples_per_tick) if end_tick is not None else None
+
+        # Start async export
+        self.audio_exporter.export_to_wav_async(filepath, start_sample, end_sample)
+        return True
+
+    def cancel_export(self) -> None:
+        """Cancel the current export operation."""
+        self.audio_exporter.cancel()
+
+    def get_export_state(self) -> str:
+        """Get the current export state.
+
+        Returns:
+            Current state as string: 'idle', 'exporting', 'completed', 'cancelled', 'error'
+        """
+        return self.audio_exporter.get_state().value
+
+    def get_export_progress(self) -> dict:
+        """Get the current export progress.
+
+        Returns:
+            Dictionary with progress info
+        """
+        progress = self.audio_exporter.get_progress()
+        return {
+            'state': progress.state.value,
+            'progress': progress.progress,
+            'current_sample': progress.current_sample,
+            'total_samples': progress.total_samples,
+            'elapsed_seconds': progress.elapsed_seconds,
+            'error_message': progress.error_message
+        }
+
+    def get_export_info(self) -> dict:
+        """Get information about the current export setup.
+
+        Returns:
+            Dictionary with export info
+        """
+        return self.audio_exporter.get_export_info()
 
 
 class WebSocketServer:
