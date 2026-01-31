@@ -33,7 +33,8 @@ interface TransportStoreState {
   clickEnabled: boolean;
   clickVolume: number;
 
-  // Recording
+  // Recording state
+  isRecording: boolean;
   recordStartTick: number | null;
   preRollEnabled: boolean;
   preRollBars: number;
@@ -109,6 +110,7 @@ export const useTransportStore = create<TransportStoreState & TransportActions>(
   clickEnabled: true,
   clickVolume: 0.7,
 
+  isRecording: false,
   recordStartTick: null,
   preRollEnabled: false,
   preRollBars: 1,
@@ -152,6 +154,7 @@ export const useTransportStore = create<TransportStoreState & TransportActions>(
 
     set({
       state: 'paused',
+      isRecording: false,
       startTime: null,
     });
   },
@@ -166,6 +169,7 @@ export const useTransportStore = create<TransportStoreState & TransportActions>(
 
     set({
       state: 'stopped',
+      isRecording: false,
       currentTick: 0,
       startTime: null,
       recordStartTick: null,
@@ -184,6 +188,7 @@ export const useTransportStore = create<TransportStoreState & TransportActions>(
       // Stop recording
       set({
         state: 'stopped',
+        isRecording: false,
         startTime: null,
         recordStartTick: null,
       });
@@ -191,6 +196,7 @@ export const useTransportStore = create<TransportStoreState & TransportActions>(
       // Start recording
       set({
         state: 'recording',
+        isRecording: true,
         startTime: Date.now(),
         recordStartTick: currentTick,
       });
@@ -332,7 +338,9 @@ export const useTransportStore = create<TransportStoreState & TransportActions>(
     set({
       currentTick: tick,
       state: state,
+      isRecording: state === 'recording',
       startTime: state === 'playing' || state === 'recording' ? Date.now() : null,
+      recordStartTick: state === 'recording' ? tick : null,
       _lastSyncTick: tick,
       _lastSyncTime: now,
       _bpm: bpm ?? get()._bpm,
@@ -419,6 +427,7 @@ export const useTransportStore = create<TransportStoreState & TransportActions>(
         ...(transportState && transportState !== currentState
           ? {
               state: transportState,
+              isRecording: transportState === 'recording',
               startTime: transportState === 'playing' || transportState === 'recording' ? Date.now() : null,
             }
           : {}),
@@ -436,6 +445,7 @@ export const useTransportStore = create<TransportStoreState & TransportActions>(
         ...(transportState && transportState !== currentState
           ? {
               state: transportState,
+              isRecording: transportState === 'recording',
               startTime: transportState === 'playing' || transportState === 'recording' ? Date.now() : null,
             }
           : {}),

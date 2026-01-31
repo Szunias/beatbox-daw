@@ -94,6 +94,11 @@ body {
   50% { opacity: 0.5; }
 }
 
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
 /* === Timeline === */
 .timeline-container {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);

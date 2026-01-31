@@ -34,6 +34,7 @@ const App: React.FC = () => {
   const { project, setWebSocket: setProjectWebSocket } = useProjectStore();
   const {
     state: transportState,
+    isRecording,
     currentTick,
     setCurrentTick,
     play,
@@ -169,6 +170,34 @@ const App: React.FC = () => {
         <header className="header">
           <h1>BeatBox DAW</h1>
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            {isRecording && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '4px 10px',
+                  borderRadius: 4,
+                  backgroundColor: 'rgba(239, 68, 68, 0.2)',
+                  color: '#ef4444',
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  border: '1px solid rgba(239, 68, 68, 0.3)',
+                  animation: 'pulse 1s infinite',
+                }}
+              >
+                <span
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: '50%',
+                    backgroundColor: '#ef4444',
+                    animation: 'blink 1s infinite',
+                  }}
+                />
+                REC
+              </div>
+            )}
             {isDemoMode && (
               <div
                 style={{
