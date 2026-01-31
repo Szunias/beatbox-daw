@@ -40,6 +40,13 @@ export interface WebSocketMessage {
   data: unknown;
 }
 
+export interface RecordingCompletedData {
+  trackId: string;
+  startTick: number;
+  durationSeconds: number;
+  audioFilePath?: string;
+}
+
 interface UseWebSocketReturn {
   isConnected: boolean;
   isDemoMode: boolean;
@@ -70,6 +77,7 @@ interface UseWebSocketReturn {
   setAudioDevice: (deviceId: number, type: 'input' | 'output') => void;
   // Callbacks for external listeners
   onTransportPosition: (callback: (position: TransportPosition) => void) => () => void;
+  onRecordingCompleted: (callback: (data: RecordingCompletedData) => void) => () => void;
   // Demo mode
   playDemoPattern: (patternIndex?: number) => void;
   stopDemoPattern: () => void;
@@ -109,6 +117,10 @@ export function useWebSocket(url: string = 'ws://localhost:8765'): UseWebSocketR
   const demoEventIndexRef = useRef(0);
   const transportPositionCallbacksRef = useRef<Set<(position: TransportPosition) => void>>(new Set());
   const commandQueueRef = useRef<QueuedCommand[]>([]);
+  const transportPositionRef = useRef<TransportPosition | null>(null);
+  const recordingStartTickRef = useRef<number>(0);
+  const recordingTrackIdRef = useRef<string | null>(null);
+  const recordingCompletedCallbacksRef = useRef<Set<(data: RecordingCompletedData) => void>>(new Set());
 
   // Calculate exponential backoff delay
   const getReconnectDelay = useCallback(() => {
@@ -268,12 +280,69 @@ export function useWebSocket(url: string = 'ws://localhost:8765'): UseWebSocketR
         break;
 
       case 'recording_started':
-        console.log('Recording started');
+        // Legacy recording started (MIDI events)
         break;
 
       case 'recording_stopped':
-        console.log('Recording stopped:', message.data);
+        // Legacy recording stopped (MIDI events)
         break;
+
+      case 'track_recording_started': {
+        const startData = message.data as { track_id: string; start_time: number };
+        // Store the start tick - use the ref to get current transport position
+        const currentTick = transportPositionRef.current?.tick || 0;
+        recordingStartTickRef.current = currentTick;
+        recordingTrackIdRef.current = startData.track_id;
+        break;
+      }
+
+      case 'track_recording_stopped': {
+        const stopData = message.data as {
+          track_id: string;
+          duration: number;
+          sample_rate: number;
+          num_samples: number;
+          start_time: number;
+        };
+
+        // Create recording completed data
+        const recordingData: RecordingCompletedData = {
+          trackId: stopData.track_id || recordingTrackIdRef.current || '',
+          startTick: recordingStartTickRef.current,
+          durationSeconds: stopData.duration,
+          // Audio file path would be set by the backend when exporting
+          audioFilePath: undefined,
+        };
+
+        // Notify all registered callbacks
+        recordingCompletedCallbacksRef.current.forEach(callback => callback(recordingData));
+
+        // Reset recording state
+        recordingStartTickRef.current = 0;
+        recordingTrackIdRef.current = null;
+        break;
+      }
+
+      case 'track_recording_auto_stopped': {
+        const autoStopData = message.data as {
+          track_id: string;
+          duration: number;
+          reason: string;
+        };
+
+        // Handle auto-stop (e.g., max duration reached) same as regular stop
+        const recordingData: RecordingCompletedData = {
+          trackId: autoStopData.track_id || recordingTrackIdRef.current || '',
+          startTick: recordingStartTickRef.current,
+          durationSeconds: autoStopData.duration,
+        };
+
+        recordingCompletedCallbacksRef.current.forEach(callback => callback(recordingData));
+
+        recordingStartTickRef.current = 0;
+        recordingTrackIdRef.current = null;
+        break;
+      }
 
       case 'export_response':
         const exportData = message.data as { success: boolean; filename: string };
@@ -290,6 +359,7 @@ export function useWebSocket(url: string = 'ws://localhost:8765'): UseWebSocketR
       case 'transport_position': {
         const position = message.data as TransportPosition;
         setTransportPosition(position);
+        transportPositionRef.current = position;
         // Notify all registered callbacks
         transportPositionCallbacksRef.current.forEach(callback => callback(position));
         break;
@@ -419,6 +489,15 @@ export function useWebSocket(url: string = 'ws://localhost:8765'): UseWebSocketR
     };
   }, []);
 
+  // === Recording Completed Callback ===
+  const onRecordingCompleted = useCallback((callback: (data: RecordingCompletedData) => void) => {
+    recordingCompletedCallbacksRef.current.add(callback);
+    // Return unsubscribe function
+    return () => {
+      recordingCompletedCallbacksRef.current.delete(callback);
+    };
+  }, []);
+
   // === Demo Mode Functions ===
   const stopDemoPattern = useCallback(() => {
     if (demoPlaybackRef.current) {
@@ -538,6 +617,7 @@ export function useWebSocket(url: string = 'ws://localhost:8765'): UseWebSocketR
     setAudioDevice,
     // Callbacks
     onTransportPosition,
+    onRecordingCompleted,
     // Demo mode
     playDemoPattern,
     stopDemoPattern,

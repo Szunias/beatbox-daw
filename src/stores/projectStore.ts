@@ -11,10 +11,12 @@ import {
   Clip,
   MidiNote,
   MidiClip,
+  AudioClip,
   createProject,
   createMidiTrack,
   createDrumTrack,
   createAudioTrack,
+  createAudioClip,
   createMidiClip,
   createMidiNote,
   generateId,
@@ -74,6 +76,14 @@ interface ProjectActions {
 
   // BeatBox Integration
   addBeatboxEvents: (trackId: string, events: DrumEvent[], startTick: number) => void;
+
+  // Audio Recording Integration
+  addAudioClipFromRecording: (
+    trackId: string,
+    audioFilePath: string,
+    startTick: number,
+    durationSeconds: number
+  ) => void;
 
   // Selection
   selectTrack: (trackId: string | null) => void;
@@ -455,6 +465,25 @@ export const useProjectStore = create<ProjectState & ProjectActions>()((set, get
       duration,
       notes,
       '#e94560'
+    );
+
+    get().addClip(trackId, clip);
+  },
+
+  // === Audio Recording Integration ===
+  addAudioClipFromRecording: (trackId, audioFilePath, startTick, durationSeconds) => {
+    const bpm = get().project.bpm;
+
+    // Convert duration from seconds to ticks
+    const durationTicks = secondsToTicks(durationSeconds, bpm);
+
+    // Create the audio clip
+    const clip = createAudioClip(
+      `Recording ${new Date().toLocaleTimeString()}`,
+      startTick,
+      Math.max(TICKS_PER_BEAT, durationTicks), // Minimum 1 beat
+      audioFilePath,
+      '#60a5fa' // Blue color for audio clips
     );
 
     get().addClip(trackId, clip);

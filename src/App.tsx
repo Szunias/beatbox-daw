@@ -24,6 +24,7 @@ const App: React.FC = () => {
     audioLevel,
     sendMessage,
     onTransportPosition,
+    onRecordingCompleted,
     devices,
     listDevices,
     setAudioDevice,
@@ -31,7 +32,7 @@ const App: React.FC = () => {
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
-  const { project, setWebSocket: setProjectWebSocket } = useProjectStore();
+  const { project, setWebSocket: setProjectWebSocket, addAudioClipFromRecording } = useProjectStore();
   const {
     state: transportState,
     isRecording,
@@ -72,6 +73,25 @@ const App: React.FC = () => {
     });
     return unsubscribe;
   }, [onTransportPosition, syncFromBackend]);
+
+  // Subscribe to recording completed events
+  useEffect(() => {
+    const unsubscribe = onRecordingCompleted((data) => {
+      // Create audio clip from recording on the specified track
+      if (data.trackId && data.durationSeconds > 0) {
+        // Use a placeholder audio file path - the backend stores the recording
+        // and the path will be determined by the project's audio file management
+        const audioFilePath = data.audioFilePath || `recordings/${data.trackId}_${Date.now()}.wav`;
+        addAudioClipFromRecording(
+          data.trackId,
+          audioFilePath,
+          data.startTick,
+          data.durationSeconds
+        );
+      }
+    });
+    return unsubscribe;
+  }, [onRecordingCompleted, addAudioClipFromRecording]);
 
   // Update UI store when transport state changes
   useEffect(() => {

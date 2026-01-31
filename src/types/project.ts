@@ -331,6 +331,25 @@ export function createAudioTrack(
   };
 }
 
+export function createAudioClip(
+  name: string,
+  startTick: number,
+  duration: number,
+  audioFilePath: string,
+  color: string = '#60a5fa'
+): AudioClip {
+  return {
+    id: generateId('clip'),
+    name,
+    type: 'audio',
+    startTick,
+    duration,
+    color,
+    muted: false,
+    audioFilePath,
+  };
+}
+
 export function createMasterTrack(): MasterTrack {
   return {
     id: generateId('master'),
