@@ -5,6 +5,7 @@
  */
 
 import { AudioClip, Track, TICKS_PER_BEAT, ticksToSeconds } from '../types/project';
+import { EffectsProcessor, createEffectsProcessor, EffectType, EffectParameters } from './EffectsProcessor';
 
 // Configuration
 const SCHEDULE_AHEAD_TIME = 0.1; // Schedule audio 100ms ahead
@@ -37,6 +38,8 @@ interface TrackSettings {
   solo: boolean;
   gainNode: GainNode;
   pannerNode: StereoPannerNode;
+  effectsProcessor: EffectsProcessor;
+  effectsInputNode: GainNode;  // Input node for effects chain
 }
 
 type TransportState = 'stopped' | 'playing' | 'paused' | 'recording';
@@ -262,7 +265,27 @@ export class AudioEngine {
       const gainNode = this.audioContext.createGain();
       const pannerNode = this.audioContext.createStereoPanner();
 
-      // Connect: panner -> gain -> master
+      // Create effects processor for this track
+      const effectsProcessor = createEffectsProcessor();
+      effectsProcessor.init(this.audioContext);
+
+      // Create input node for effects (clips connect here)
+      const effectsInputNode = this.audioContext.createGain();
+      effectsInputNode.gain.value = 1.0;
+
+      // Connect effects chain:
+      // effectsInputNode -> effectsProcessor input -> effects chain -> effectsProcessor output -> panner -> gain -> master
+      const effectsInput = effectsProcessor.getInputNode();
+      const effectsOutput = effectsProcessor.getOutputNode();
+
+      if (effectsInput && effectsOutput) {
+        effectsInputNode.connect(effectsInput);
+        effectsOutput.connect(pannerNode);
+      } else {
+        // Fallback: direct connection if effects processor not ready
+        effectsInputNode.connect(pannerNode);
+      }
+
       pannerNode.connect(gainNode);
       gainNode.connect(this.masterGainNode);
 
@@ -273,6 +296,8 @@ export class AudioEngine {
         solo: false,
         gainNode,
         pannerNode,
+        effectsProcessor,
+        effectsInputNode,
       };
       this.trackSettings.set(trackId, settings);
     }
@@ -339,7 +364,7 @@ export class AudioEngine {
   /**
    * Get or create track output nodes
    */
-  private getTrackOutput(trackId: string): { gainNode: GainNode; pannerNode: StereoPannerNode } | null {
+  private getTrackOutput(trackId: string): { gainNode: GainNode; pannerNode: StereoPannerNode; effectsInputNode: GainNode } | null {
     if (!this.audioContext || !this.masterGainNode) return null;
 
     let settings = this.trackSettings.get(trackId);
@@ -355,6 +380,7 @@ export class AudioEngine {
     return {
       gainNode: settings.gainNode,
       pannerNode: settings.pannerNode,
+      effectsInputNode: settings.effectsInputNode,
     };
   }
 
@@ -561,10 +587,10 @@ export class AudioEngine {
     const clipPanner = this.audioContext.createStereoPanner();
     clipPanner.pan.value = 0;
 
-    // Connect: source -> clipGain -> clipPanner -> trackPanner -> trackGain -> master
+    // Connect: source -> clipGain -> clipPanner -> effectsInput -> effects chain -> trackPanner -> trackGain -> master
     source.connect(clipGain);
     clipGain.connect(clipPanner);
-    clipPanner.connect(trackOutput.pannerNode);
+    clipPanner.connect(trackOutput.effectsInputNode);
 
     // Calculate when to start playback
     let startTime: number;
@@ -724,8 +750,10 @@ export class AudioEngine {
     this.stopPlayback();
     this.clearAllClips();
 
-    // Disconnect all track nodes
+    // Disconnect all track nodes and dispose effects processors
     for (const settings of this.trackSettings.values()) {
+      settings.effectsProcessor.dispose();
+      settings.effectsInputNode.disconnect();
       settings.gainNode.disconnect();
       settings.pannerNode.disconnect();
     }
@@ -794,6 +822,137 @@ export class AudioEngine {
    */
   isCurrentlyPlaying(): boolean {
     return this.isPlaying;
+  }
+
+  // === Track Effects Methods ===
+
+  /**
+   * Add an effect to a track's effect chain
+   */
+  addTrackEffect(
+    trackId: string,
+    effectType: EffectType,
+    effectId?: string,
+    position?: number
+  ): string | null {
+    const settings = this.trackSettings.get(trackId);
+    if (!settings) {
+      // Create track settings if they don't exist
+      this.updateTrackSettings(trackId);
+      const newSettings = this.trackSettings.get(trackId);
+      if (!newSettings) return null;
+      return newSettings.effectsProcessor.addEffect(effectType, effectId, position);
+    }
+    return settings.effectsProcessor.addEffect(effectType, effectId, position);
+  }
+
+  /**
+   * Remove an effect from a track's effect chain
+   */
+  removeTrackEffect(trackId: string, effectId: string): boolean {
+    const settings = this.trackSettings.get(trackId);
+    if (!settings) return false;
+    return settings.effectsProcessor.removeEffect(effectId);
+  }
+
+  /**
+   * Move an effect to a new position in the track's effect chain
+   */
+  moveTrackEffect(trackId: string, effectId: string, newPosition: number): boolean {
+    const settings = this.trackSettings.get(trackId);
+    if (!settings) return false;
+    return settings.effectsProcessor.moveEffect(effectId, newPosition);
+  }
+
+  /**
+   * Set a parameter on a track effect
+   */
+  setTrackEffectParameter(
+    trackId: string,
+    effectId: string,
+    paramName: string,
+    value: number
+  ): boolean {
+    const settings = this.trackSettings.get(trackId);
+    if (!settings) return false;
+    return settings.effectsProcessor.setEffectParameter(effectId, paramName, value);
+  }
+
+  /**
+   * Get all parameters of a track effect
+   */
+  getTrackEffectParameters(trackId: string, effectId: string): EffectParameters | null {
+    const settings = this.trackSettings.get(trackId);
+    if (!settings) return null;
+    return settings.effectsProcessor.getEffectParameters(effectId);
+  }
+
+  /**
+   * Enable or disable a track effect
+   */
+  setTrackEffectEnabled(trackId: string, effectId: string, enabled: boolean): boolean {
+    const settings = this.trackSettings.get(trackId);
+    if (!settings) return false;
+    return settings.effectsProcessor.setEffectEnabled(effectId, enabled);
+  }
+
+  /**
+   * Bypass all effects on a track
+   */
+  setTrackEffectsBypass(trackId: string, bypassed: boolean): void {
+    const settings = this.trackSettings.get(trackId);
+    if (!settings) return;
+    settings.effectsProcessor.setBypass(bypassed);
+  }
+
+  /**
+   * Check if track effects are bypassed
+   */
+  isTrackEffectsBypassed(trackId: string): boolean {
+    const settings = this.trackSettings.get(trackId);
+    if (!settings) return false;
+    return settings.effectsProcessor.isBypassed();
+  }
+
+  /**
+   * Get information about all effects on a track
+   */
+  getTrackEffectsInfo(trackId: string): Array<{
+    id: string;
+    type: EffectType;
+    enabled: boolean;
+    parameters: EffectParameters;
+  }> {
+    const settings = this.trackSettings.get(trackId);
+    if (!settings) return [];
+    return settings.effectsProcessor.getChainInfo();
+  }
+
+  /**
+   * Clear all effects from a track
+   */
+  clearTrackEffects(trackId: string): void {
+    const settings = this.trackSettings.get(trackId);
+    if (!settings) return;
+    settings.effectsProcessor.clear();
+  }
+
+  /**
+   * Reset all effects on a track (clear delay lines, etc.)
+   */
+  resetTrackEffects(trackId: string): void {
+    const settings = this.trackSettings.get(trackId);
+    if (!settings) return;
+    settings.effectsProcessor.reset();
+  }
+
+  /**
+   * Get the effects processor for a track (for advanced use)
+   */
+  getTrackEffectsProcessor(trackId: string): EffectsProcessor | null {
+    const settings = this.trackSettings.get(trackId);
+    if (!settings) return null;
+    return settings.effectsProcessor;
   }
 }
 
