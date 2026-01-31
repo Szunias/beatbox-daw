@@ -521,11 +521,16 @@ class BeatBoxDawEngine:
         """Toggle DAW recording.
 
         Validates state transition before starting recording.
+        When starting, automatically starts track recording on armed tracks.
+        When stopping, automatically stops track recording and creates clips.
         Returns True if recording started, False otherwise.
         """
         current_state = self.transport.state
-        # If already recording or in pre-roll, we're stopping - always valid
+        # If already recording or in pre-roll, we're stopping
         if current_state in (TransportState.RECORDING, TransportState.PRE_ROLL):
+            # Stop track recording if active
+            if self._audio_recording_active:
+                self.stop_track_recording()
             return self.transport.record()
 
         # Starting recording - validate transition
@@ -533,7 +538,48 @@ class BeatBoxDawEngine:
            not self._validate_state_transition(TransportState.PRE_ROLL):
             return False
 
+        # Find armed track and start recording on it
+        armed_track = self._get_armed_track()
+        if armed_track:
+            self.start_track_recording(armed_track.id)
+
         return self.transport.record()
+
+    def _get_armed_track(self) -> Optional[Track]:
+        """Get the first armed track in the project.
+
+        Returns:
+            The first armed track, or None if no track is armed
+        """
+        if not self._project:
+            return None
+
+        for track in self._project.tracks:
+            if track.armed and track.type in ('audio', 'drum', 'midi'):
+                return track
+        return None
+
+    def set_track_armed(self, track_id: str, armed: bool) -> bool:
+        """Set a track's armed state for recording.
+
+        Args:
+            track_id: ID of the track to arm/disarm
+            armed: True to arm, False to disarm
+
+        Returns:
+            True if successful, False if track not found
+        """
+        track = self.project_manager.get_track(track_id)
+        if not track:
+            return False
+
+        # If arming this track, disarm all other tracks (only one can be armed at a time)
+        if armed and self._project:
+            for t in self._project.tracks:
+                t.armed = False
+
+        track.armed = armed
+        return True
 
     def transport_seek(self, tick: int) -> bool:
         """Seek to position.
@@ -1011,13 +1057,13 @@ class BeatBoxDawEngine:
             if self._track_recording_callback not in self.audio_capture.callbacks:
                 self.audio_capture.add_callback(self._track_recording_callback)
 
-        asyncio.create_task(self.broadcast({
+        self._broadcast_threadsafe({
             'type': 'track_recording_started',
             'data': {
                 'track_id': track_id,
                 'start_time': start_time
             }
-        }))
+        })
 
         return True
 
@@ -1052,10 +1098,10 @@ class BeatBoxDawEngine:
             'start_time': metadata.start_time
         }
 
-        asyncio.create_task(self.broadcast({
+        self._broadcast_threadsafe({
             'type': 'track_recording_stopped',
             'data': result
-        }))
+        })
 
         return result
 
@@ -1090,20 +1136,20 @@ class BeatBoxDawEngine:
         """Callback when audio recording is stopped (e.g., max duration reached)."""
         if self._audio_recording_active:
             self._audio_recording_active = False
-            asyncio.create_task(self.broadcast({
+            self._broadcast_threadsafe({
                 'type': 'track_recording_auto_stopped',
                 'data': {
                     'track_id': self._recording_track_id,
                     'duration': metadata.duration,
                     'reason': 'max_duration_reached'
                 }
-            }))
+            })
 
     # === Audio Export Callbacks ===
 
     def _on_export_progress(self, progress: ExportProgress) -> None:
         """Callback for export progress updates."""
-        asyncio.create_task(self.broadcast({
+        self._broadcast_threadsafe({
             'type': 'export_progress',
             'data': {
                 'state': progress.state.value,
@@ -1112,18 +1158,18 @@ class BeatBoxDawEngine:
                 'total_samples': progress.total_samples,
                 'elapsed_seconds': progress.elapsed_seconds
             }
-        }))
+        })
 
     def _on_export_completed(self, filepath: str, success: bool, error: Optional[str]) -> None:
         """Callback for export completion."""
-        asyncio.create_task(self.broadcast({
+        self._broadcast_threadsafe({
             'type': 'export_completed',
             'data': {
                 'filepath': filepath,
                 'success': success,
                 'error': error
             }
-        }))
+        })
 
     # === Audio Export Methods ===
 
@@ -1455,6 +1501,21 @@ class WebSocketServer:
             start_tick = payload.get('start_tick', 0)
             clip = self.engine.add_beatbox_clip(track_id, start_tick)
             return {'type': 'clip_added', 'data': clip}
+
+        elif msg_type == 'set_track_armed':
+            track_id = payload.get('track_id')
+            armed = payload.get('armed', False)
+            if not track_id:
+                return {'type': 'set_track_armed_response', 'data': {
+                    'success': False,
+                    'error': 'track_id is required'
+                }}
+            success = self.engine.set_track_armed(track_id, armed)
+            return {'type': 'set_track_armed_response', 'data': {
+                'success': success,
+                'track_id': track_id,
+                'armed': armed
+            }}
 
         # === Audio Track Recording Commands ===
         elif msg_type == 'start_track_recording':

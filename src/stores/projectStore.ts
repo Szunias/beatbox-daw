@@ -274,7 +274,25 @@ export const useProjectStore = create<ProjectState & ProjectActions>()((set, get
   toggleTrackArmed: (trackId) => {
     const track = get().getTrack(trackId);
     if (track) {
-      get().updateTrack(trackId, { armed: !track.armed });
+      const newArmedState = !track.armed;
+
+      // If arming this track, disarm all others (only one can be armed at a time)
+      if (newArmedState) {
+        const state = get();
+        state.project.tracks.forEach((t) => {
+          if (t.id !== trackId && t.armed) {
+            get().updateTrack(t.id, { armed: false });
+          }
+        });
+      }
+
+      // Sync with backend
+      const { _wsSend, _isConnected } = get();
+      if (_isConnected && _wsSend) {
+        _wsSend('set_track_armed', { track_id: trackId, armed: newArmedState });
+      }
+
+      get().updateTrack(trackId, { armed: newArmedState });
     }
   },
 

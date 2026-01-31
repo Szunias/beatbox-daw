@@ -393,6 +393,10 @@ export function useWebSocket(url: string = 'ws://localhost:8765'): UseWebSocketR
         console.log('Audio device changed:', message.data);
         break;
 
+      case 'set_track_armed_response':
+        // Track armed state synced with backend
+        break;
+
       default:
         console.log('Unknown message type:', message.type);
     }
