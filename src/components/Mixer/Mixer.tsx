@@ -1,10 +1,12 @@
 /**
  * Mixer Component
  * Main mixer view with all track channels and master channel
+ * Connects to AudioEngine for real-time audio control
  */
 
 import React, { useState, useEffect } from 'react';
 import { useProjectStore } from '../../stores/projectStore';
+import { getAudioEngine, initAudioEngine } from '../../audio';
 import { Channel } from './Channel';
 
 interface MixerProps {
@@ -21,6 +23,26 @@ export const Mixer: React.FC<MixerProps> = ({ audioLevels = {}, masterLevel = 0 
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
+
+  // Initialize AudioEngine on mount
+  useEffect(() => {
+    const initEngine = async () => {
+      await initAudioEngine();
+    };
+    initEngine();
+  }, []);
+
+  // Sync master track volume with AudioEngine
+  useEffect(() => {
+    const audioEngine = getAudioEngine();
+    audioEngine.setMasterVolume(project.masterTrack.volume);
+  }, [project.masterTrack.volume]);
+
+  // Sync all track settings with AudioEngine when project changes
+  useEffect(() => {
+    const audioEngine = getAudioEngine();
+    audioEngine.syncWithProject(project.tracks, project.bpm);
+  }, [project.tracks, project.bpm]);
 
   return (
     <div

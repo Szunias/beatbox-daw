@@ -1,11 +1,13 @@
 /**
  * Channel Component
  * Single mixer channel with fader, pan, mute, solo, and VU meter
+ * Connected to AudioEngine for real-time audio control
  */
 
 import React, { useCallback, useState, useEffect } from 'react';
 import { Track } from '../../types/project';
 import { useProjectStore } from '../../stores/projectStore';
+import { getAudioEngine } from '../../audio';
 import { VUMeter } from './VUMeter';
 
 interface ChannelProps {
@@ -32,6 +34,18 @@ export const Channel: React.FC<ChannelProps> = ({ track, level = 0, isMaster = f
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
+
+  // Sync track settings with AudioEngine for real-time audio control
+  useEffect(() => {
+    const audioEngine = getAudioEngine();
+    audioEngine.updateTrackSettings(
+      track.id,
+      track.volume,
+      track.pan,
+      track.muted,
+      track.solo
+    );
+  }, [track.id, track.volume, track.pan, track.muted, track.solo]);
 
   const isSelected = selectedTrackId === track.id;
 
