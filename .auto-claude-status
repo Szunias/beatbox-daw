@@ -1,25 +1,25 @@
 {
   "active": true,
-  "spec": "003-w-deploymencie-w-cloud-jest-caly-czas-connecting-d",
+  "spec": "004-masz-zrobic-massive-refactor-designu-strony-bo-jes",
   "state": "building",
   "subtasks": {
-    "completed": 3,
-    "total": 8,
+    "completed": 0,
+    "total": 30,
     "in_progress": 1,
     "failed": 0
   },
   "phase": {
-    "current": "MIDI Tile Precision Fix",
+    "current": "Setup & Configuration",
     "id": null,
-    "total": 1
+    "total": 5
   },
   "workers": {
     "active": 0,
     "max": 1
   },
   "session": {
-    "number": 4,
-    "started_at": "2026-02-01T12:33:02.712468"
+    "number": 1,
+    "started_at": "2026-02-01T13:18:37.440592"
   },
-  "last_update": "2026-02-01T12:37:07.141808"
+  "last_update": "2026-02-01T13:18:37.510339"
 }
