@@ -9,6 +9,7 @@ Supports both BeatBox-to-MIDI conversion and full DAW functionality.
 import asyncio
 import json
 import numpy as np
+import sounddevice as sd
 import websockets
 from websockets.server import WebSocketServerProtocol
 from typing import Optional, Set
@@ -193,6 +194,60 @@ class BeatBoxDawEngine:
         # Will be set when server starts
         self._event_loop: Optional[asyncio.AbstractEventLoop] = None
 
+        # === Audio Click Synthesis (fallback when MIDI unavailable) ===
+        self._click_samples = self._generate_click_samples()
+        self._click_stream: Optional[sd.OutputStream] = None
+
+    # === Audio Click Synthesis ===
+
+    def _generate_click_samples(self) -> dict:
+        """Generate audio samples for metronome clicks.
+
+        Creates short percussive sounds for downbeat (beat 1) and regular beats.
+        Uses sine waves with exponential decay for clean, audible clicks.
+
+        Returns:
+            Dictionary with 'downbeat' and 'beat' audio samples as np.ndarray.
+        """
+        sample_rate = self.config.sample_rate
+        duration = 0.05  # 50ms click duration
+
+        # Generate time array
+        t = np.linspace(0, duration, int(sample_rate * duration), False)
+
+        # Exponential decay envelope
+        decay = np.exp(-t * 50)  # Fast decay for percussive sound
+
+        # Downbeat click: higher frequency (1200 Hz), higher amplitude
+        downbeat_freq = 1200.0
+        downbeat = (np.sin(2 * np.pi * downbeat_freq * t) * decay * 0.6).astype(np.float32)
+
+        # Regular beat click: slightly lower frequency (900 Hz), lower amplitude
+        beat_freq = 900.0
+        beat = (np.sin(2 * np.pi * beat_freq * t) * decay * 0.4).astype(np.float32)
+
+        return {
+            'downbeat': downbeat,
+            'beat': beat
+        }
+
+    def _play_click_audio(self, is_downbeat: bool) -> None:
+        """Play audio click using sounddevice (fallback when MIDI unavailable).
+
+        Args:
+            is_downbeat: True for beat 1 (downbeat), False for other beats.
+        """
+        try:
+            # Select appropriate click sample
+            sample_key = 'downbeat' if is_downbeat else 'beat'
+            audio_data = self._click_samples[sample_key]
+
+            # Play the click asynchronously (non-blocking)
+            sd.play(audio_data, self.config.sample_rate, blocking=False)
+        except Exception:
+            # Silently ignore audio playback errors
+            pass
+
     # === BeatBox Detection ===
 
     async def broadcast(self, message: dict) -> None:
@@ -355,11 +410,21 @@ class BeatBoxDawEngine:
         self.midi_output.send_note_off(note, channel=channel)
 
     def _on_click(self, bar: int, beat: int):
-        """Handle metronome click."""
+        """Handle metronome click.
+
+        Uses MIDI output if available, otherwise falls back to audio synthesis.
+        """
         if self.transport.config.click_enabled:
-            velocity = 100 if beat == 1 else 70
-            note = 76 if beat == 1 else 77  # Woodblock sounds
-            self.midi_output.send_note(note, velocity, duration=0.05, channel=9)
+            is_downbeat = (beat == 1)
+
+            # Try MIDI first, fall back to audio synthesis if unavailable
+            if self.midi_output.is_connected:
+                velocity = 100 if is_downbeat else 70
+                note = 76 if is_downbeat else 77  # Woodblock sounds
+                self.midi_output.send_note(note, velocity, duration=0.05, channel=9)
+            else:
+                # Audio click synthesis fallback
+                self._play_click_audio(is_downbeat)
 
             self._broadcast_threadsafe({
                 'type': 'click',
