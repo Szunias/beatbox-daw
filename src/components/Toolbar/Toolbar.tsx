@@ -23,6 +23,29 @@ export const Toolbar: React.FC = () => {
     [setBpm]
   );
 
+  const handleBpmKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setBpm(project.bpm + 1);
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setBpm(project.bpm - 1);
+      }
+    },
+    [project.bpm, setBpm]
+  );
+
+  const handleBpmWheel = useCallback(
+    (e: React.WheelEvent<HTMLInputElement>) => {
+      e.preventDefault();
+      // Scroll up (negative deltaY) increases BPM, scroll down decreases
+      const delta = e.deltaY < 0 ? 1 : -1;
+      setBpm(project.bpm + delta);
+    },
+    [project.bpm, setBpm]
+  );
+
   const handleNumeratorChange = useCallback(
     (e: React.ChangeEvent<HTMLSelectElement>) => {
       const value = parseInt(e.target.value, 10);
@@ -101,6 +124,8 @@ export const Toolbar: React.FC = () => {
           max={300}
           value={project.bpm}
           onChange={handleBpmChange}
+          onKeyDown={handleBpmKeyDown}
+          onWheel={handleBpmWheel}
           style={{
             width: 60,
             padding: '4px 8px',

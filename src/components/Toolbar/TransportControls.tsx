@@ -195,7 +195,7 @@ export const TransportControls: React.FC = () => {
       {/* Loop toggle */}
       <button
         onClick={() => setLoopEnabled(!loopRegion.enabled)}
-        title="Toggle Loop"
+        title="Toggle Loop (L) - Drag on timeline ruler to set loop region"
         style={{
           padding: '6px 10px',
           border: 'none',

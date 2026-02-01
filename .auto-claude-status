@@ -1,25 +1,25 @@
 {
   "active": true,
-  "spec": "004-masz-zrobic-massive-refactor-designu-strony-bo-jes",
+  "spec": "005-napraw-bo-nie-da-sie-zmienic-bpm-jak-sie-kursorem-",
   "state": "building",
   "subtasks": {
-    "completed": 9,
-    "total": 30,
+    "completed": 7,
+    "total": 11,
     "in_progress": 1,
     "failed": 0
   },
   "phase": {
-    "current": "Mixer Components (Priority)",
+    "current": "Loop Region UX Improvements",
     "id": null,
-    "total": 5
+    "total": 3
   },
   "workers": {
     "active": 0,
     "max": 1
   },
   "session": {
-    "number": 10,
-    "started_at": "2026-02-01T13:18:37.440592"
+    "number": 8,
+    "started_at": "2026-02-01T18:51:23.843141"
   },
-  "last_update": "2026-02-01T13:36:37.889957"
+  "last_update": "2026-02-01T19:05:13.308008"
 }
