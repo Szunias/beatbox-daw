@@ -36,6 +36,16 @@ export const Toolbar: React.FC = () => {
     [project.bpm, setBpm]
   );
 
+  const handleBpmWheel = useCallback(
+    (e: React.WheelEvent<HTMLInputElement>) => {
+      e.preventDefault();
+      // Scroll up (negative deltaY) increases BPM, scroll down decreases
+      const delta = e.deltaY < 0 ? 1 : -1;
+      setBpm(project.bpm + delta);
+    },
+    [project.bpm, setBpm]
+  );
+
   const handleNumeratorChange = useCallback(
     (e: React.ChangeEvent<HTMLSelectElement>) => {
       const value = parseInt(e.target.value, 10);
@@ -115,6 +125,7 @@ export const Toolbar: React.FC = () => {
           value={project.bpm}
           onChange={handleBpmChange}
           onKeyDown={handleBpmKeyDown}
+          onWheel={handleBpmWheel}
           style={{
             width: 60,
             padding: '4px 8px',
