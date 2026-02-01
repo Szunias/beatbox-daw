@@ -43,7 +43,7 @@ export const Track: React.FC<TrackProps> = ({ track, height, width }) => {
                         snapSettings.value === '1/8' ? TICKS_PER_BEAT / 2 :
                         snapSettings.value === '1/16' ? TICKS_PER_BEAT / 4 :
                         snapSettings.value === '1/32' ? TICKS_PER_BEAT / 8 : TICKS_PER_BEAT;
-      clickTick = Math.floor(clickTick / snapTicks) * snapTicks;
+      clickTick = Math.round(clickTick / snapTicks) * snapTicks;
     }
 
     // Create new clip (1 bar duration)

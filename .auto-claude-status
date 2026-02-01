@@ -1,25 +1,25 @@
 {
   "active": true,
-  "spec": "002-dobra-og-lnie-napraw-bo-nie-dziala-nagrywanie-g-os",
+  "spec": "003-w-deploymencie-w-cloud-jest-caly-czas-connecting-d",
   "state": "building",
   "subtasks": {
-    "completed": 14,
-    "total": 18,
+    "completed": 3,
+    "total": 8,
     "in_progress": 1,
     "failed": 0
   },
   "phase": {
-    "current": "Integration Testing",
+    "current": "MIDI Tile Precision Fix",
     "id": null,
-    "total": 4
+    "total": 1
   },
   "workers": {
     "active": 0,
     "max": 1
   },
   "session": {
-    "number": 11,
-    "started_at": "2026-02-01T10:24:23.267795"
+    "number": 4,
+    "started_at": "2026-02-01T12:33:02.712468"
   },
-  "last_update": "2026-02-01T11:40:07.285099"
+  "last_update": "2026-02-01T12:37:07.141808"
 }
