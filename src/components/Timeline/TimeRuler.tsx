@@ -293,6 +293,71 @@ export const TimeRuler: React.FC<TimeRulerProps> = ({ width, height = 30 }) => {
     }
   }, [isDragging, handleMouseMove, handleMouseUp]);
 
+  // Get current tick for keyboard shortcuts
+  const { currentTick, getInterpolatedTick } = useTransportStore();
+
+  // Keyboard shortcuts for loop control
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't handle shortcuts when typing in input fields
+      const activeElement = document.activeElement;
+      if (
+        activeElement instanceof HTMLInputElement ||
+        activeElement instanceof HTMLTextAreaElement ||
+        activeElement instanceof HTMLSelectElement ||
+        (activeElement as HTMLElement)?.isContentEditable
+      ) {
+        return;
+      }
+
+      // Get current position (use interpolated tick for smooth position during playback)
+      const currentPosition = snapToBar(getInterpolatedTick());
+
+      switch (e.key.toLowerCase()) {
+        case 'l':
+          // L: Toggle loop enabled
+          setLoopEnabled(!loopRegion.enabled);
+          e.preventDefault();
+          break;
+        case '[':
+          // [: Set loop start to current position
+          // Ensure start is before end (swap if needed or enforce minimum)
+          if (currentPosition < loopRegion.endTick - ticksPerBar) {
+            setLoopRegion(currentPosition, loopRegion.endTick);
+          } else {
+            // If current position is at or past end, set start to at least 1 bar before end
+            setLoopRegion(loopRegion.endTick - ticksPerBar, loopRegion.endTick);
+          }
+          // Enable loop if not already enabled
+          if (!loopRegion.enabled) {
+            setLoopEnabled(true);
+          }
+          e.preventDefault();
+          break;
+        case ']':
+          // ]: Set loop end to current position
+          // Ensure end is after start (enforce minimum 1 bar)
+          if (currentPosition > loopRegion.startTick + ticksPerBar) {
+            setLoopRegion(loopRegion.startTick, currentPosition);
+          } else {
+            // If current position is at or before start, set end to at least 1 bar after start
+            setLoopRegion(loopRegion.startTick, loopRegion.startTick + ticksPerBar);
+          }
+          // Enable loop if not already enabled
+          if (!loopRegion.enabled) {
+            setLoopEnabled(true);
+          }
+          e.preventDefault();
+          break;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [loopRegion, setLoopEnabled, setLoopRegion, snapToBar, getInterpolatedTick, ticksPerBar]);
+
   // Calculate loop region display position
   const loopRegionDisplay = useMemo(() => {
     if (isDragging && dragCurrentTick !== null) {
