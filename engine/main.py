@@ -207,7 +207,11 @@ class BeatBoxDawEngine:
         )
 
     def _audio_callback(self, audio: np.ndarray) -> None:
-        """Process incoming audio buffer for beatbox detection."""
+        """Process incoming audio buffer for beatbox detection and recording."""
+        # Feed audio to AudioRecorder if track recording is active
+        if self._audio_recording_active:
+            self.audio_recorder.add_audio_buffer(audio)
+
         if self.state != EngineState.RUNNING:
             return
 
