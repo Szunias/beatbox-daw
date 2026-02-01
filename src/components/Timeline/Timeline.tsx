@@ -67,6 +67,9 @@ export const Timeline: React.FC<TimelineProps> = ({ height = 400 }) => {
   const [hoverCursorX, setHoverCursorX] = useState<number>(0);
   const [isHovering, setIsHovering] = useState<boolean>(false);
 
+  // Dragging state to hide hover cursor during drag operations
+  const [isDragging, setIsDragging] = useState<boolean>(false);
+
   const trackHeaderWidth = isMobile ? trackHeaderWidth_MOBILE : trackHeaderWidth_DESKTOP;
 
   const { project, addTrack, removeTrack, selectedTrackId, selectTrack } = useProjectStore();
@@ -203,6 +206,21 @@ export const Timeline: React.FC<TimelineProps> = ({ height = 400 }) => {
   // Handle mouse leave tracks area
   const handleTracksMouseLeave = useCallback(() => {
     setIsHovering(false);
+  }, []);
+
+  // Handle mouse down on tracks area (start of potential drag)
+  const handleTracksMouseDown = useCallback(() => {
+    setIsDragging(true);
+  }, []);
+
+  // Handle global mouse up to end drag operations
+  useEffect(() => {
+    const handleGlobalMouseUp = () => {
+      setIsDragging(false);
+    };
+
+    window.addEventListener('mouseup', handleGlobalMouseUp);
+    return () => window.removeEventListener('mouseup', handleGlobalMouseUp);
   }, []);
 
   const tracksAreaHeight = height - TIME_RULER_HEIGHT;
@@ -343,6 +361,7 @@ export const Timeline: React.FC<TimelineProps> = ({ height = 400 }) => {
           onMouseMove={handleTracksMouseMove}
           onMouseEnter={handleTracksMouseEnter}
           onMouseLeave={handleTracksMouseLeave}
+          onMouseDown={handleTracksMouseDown}
         >
           {/* Tracks */}
           <div
@@ -386,7 +405,7 @@ export const Timeline: React.FC<TimelineProps> = ({ height = 400 }) => {
           <Playhead height={tracksAreaHeight} containerWidth={containerWidth} />
 
           {/* Hover cursor */}
-          <HoverCursor x={hoverCursorX} height={tracksAreaHeight} visible={isHovering} />
+          <HoverCursor x={hoverCursorX} height={tracksAreaHeight} visible={isHovering && !isDragging} />
 
           {/* Recording overlay */}
           {isRecording && (
