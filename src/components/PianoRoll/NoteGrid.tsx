@@ -94,7 +94,7 @@ export const NoteGrid: React.FC<NoteGridProps> = ({
     });
   }, [notes, startTick, endTick, topPitch, bottomPitch]);
 
-  // Handle click to add note
+  // Handle click to add note with improved grid snapping
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
       if (e.target !== e.currentTarget) return;
@@ -103,24 +103,36 @@ export const NoteGrid: React.FC<NoteGridProps> = ({
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
 
-      // Calculate pitch and tick from click position
-      const pitch = topPitch - Math.floor(y / noteHeight);
+      // Calculate pitch from click position
+      // Clicking anywhere within a pitch row assigns that pitch
+      const rawPitch = topPitch - Math.floor(y / noteHeight);
+      // Clamp pitch to valid range for edge case clicks
+      const pitch = Math.max(bottomPitch, Math.min(topPitch, rawPitch));
+
+      // Calculate tick from click position
       let tick = startTick + (x / width) * tickRange;
 
-      // Snap to grid
+      // Snap to nearest grid intersection
+      // The rounding creates a tolerance zone - clicks within half a snap
+      // interval of a grid line will snap to that line, creating a forgiving
+      // hit area that doesn't require exact clicks on the grid
       const snapTicks = getSnapTicks(snapValue);
       tick = Math.round(tick / snapTicks) * snapTicks;
 
+      // Clamp tick to valid visible range for edge case clicks
+      tick = Math.max(startTick, Math.min(endTick, tick));
+
       if (e.shiftKey || e.ctrlKey || e.metaKey) {
-        // Just deselect
+        // Modifier keys: just deselect
         onDeselectAll?.();
       } else if (onAddNote && pitch >= bottomPitch && pitch <= topPitch) {
+        // Add note at snapped grid position
         onAddNote(pitch, tick);
       } else {
         onDeselectAll?.();
       }
     },
-    [topPitch, bottomPitch, noteHeight, startTick, tickRange, width, snapValue, onAddNote, onDeselectAll]
+    [topPitch, bottomPitch, noteHeight, startTick, endTick, tickRange, width, snapValue, onAddNote, onDeselectAll]
   );
 
   return (
