@@ -24,14 +24,17 @@ export const TimeRuler: React.FC<TimeRulerProps> = ({ width, height = 30 }) => {
 
   // Drag state for loop region selection and movement
   const [isDragging, setIsDragging] = useState(false);
-  const [dragMode, setDragMode] = useState<'create' | 'move' | null>(null);
+  const [dragMode, setDragMode] = useState<'create' | 'move' | 'resize-start' | 'resize-end' | null>(null);
   const [dragStartTick, setDragStartTick] = useState<number | null>(null);
   const [dragCurrentTick, setDragCurrentTick] = useState<number | null>(null);
   // For move mode: store the offset from click position to region start
   const [moveOffset, setMoveOffset] = useState<number>(0);
-  // Track if hovering over loop region for cursor change
-  const [isHoveringLoop, setIsHoveringLoop] = useState(false);
+  // Track hover position on loop region (null, 'body', 'left-edge', 'right-edge')
+  const [hoverPosition, setHoverPosition] = useState<'body' | 'left-edge' | 'right-edge' | null>(null);
   const rulerRef = useRef<HTMLDivElement>(null);
+
+  // Edge detection zone size in pixels
+  const EDGE_ZONE_SIZE = 8;
 
   const ticksPerBar = TICKS_PER_BEAT * timeSignatureNumerator;
   const tickRange = endTick - startTick;
@@ -103,32 +106,48 @@ export const TimeRuler: React.FC<TimeRulerProps> = ({ width, height = 30 }) => {
     [ticksPerBar]
   );
 
-  // Check if a tick position is inside the current loop region
-  const isInsideLoopRegion = useCallback(
-    (tick: number): boolean => {
-      if (!loopRegion.enabled) return false;
-      return tick >= loopRegion.startTick && tick <= loopRegion.endTick;
-    },
-    [loopRegion.enabled, loopRegion.startTick, loopRegion.endTick]
-  );
-
-  // Handle hover to show move cursor when over loop region
+  // Handle hover to show appropriate cursor when over loop region
   const handleHover = useCallback(
     (e: React.MouseEvent) => {
       if (isDragging) return; // Don't change hover state while dragging
       if (!rulerRef.current) return;
+      if (!loopRegion.enabled) {
+        setHoverPosition(null);
+        return;
+      }
+
       const rect = rulerRef.current.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const tick = pixelToTick(x);
-      setIsHoveringLoop(isInsideLoopRegion(tick));
+
+      // Calculate pixel positions of loop region edges
+      const loopStartX = (loopRegion.startTick - startTick) * pixelsPerTick;
+      const loopEndX = (loopRegion.endTick - startTick) * pixelsPerTick;
+
+      // Check if near left edge
+      if (Math.abs(x - loopStartX) <= EDGE_ZONE_SIZE) {
+        setHoverPosition('left-edge');
+      }
+      // Check if near right edge
+      else if (Math.abs(x - loopEndX) <= EDGE_ZONE_SIZE) {
+        setHoverPosition('right-edge');
+      }
+      // Check if inside loop region body
+      else if (tick >= loopRegion.startTick && tick <= loopRegion.endTick) {
+        setHoverPosition('body');
+      }
+      // Outside loop region
+      else {
+        setHoverPosition(null);
+      }
     },
-    [isDragging, pixelToTick, isInsideLoopRegion]
+    [isDragging, pixelToTick, loopRegion.enabled, loopRegion.startTick, loopRegion.endTick, startTick, pixelsPerTick, EDGE_ZONE_SIZE]
   );
 
   // Handle mouse leave
   const handleMouseLeave = useCallback(() => {
     if (!isDragging) {
-      setIsHoveringLoop(false);
+      setHoverPosition(null);
     }
   }, [isDragging]);
 
@@ -148,8 +167,22 @@ export const TimeRuler: React.FC<TimeRulerProps> = ({ width, height = 30 }) => {
         setDragStartTick(snappedTick);
         setDragCurrentTick(snappedTick);
         e.preventDefault();
-      } else if (isInsideLoopRegion(tick)) {
-        // Click inside loop region starts move mode
+      } else if (hoverPosition === 'left-edge') {
+        // Click on left edge starts resize-start mode
+        setIsDragging(true);
+        setDragMode('resize-start');
+        setDragStartTick(loopRegion.startTick);
+        setDragCurrentTick(loopRegion.startTick);
+        e.preventDefault();
+      } else if (hoverPosition === 'right-edge') {
+        // Click on right edge starts resize-end mode
+        setIsDragging(true);
+        setDragMode('resize-end');
+        setDragStartTick(loopRegion.endTick);
+        setDragCurrentTick(loopRegion.endTick);
+        e.preventDefault();
+      } else if (hoverPosition === 'body') {
+        // Click inside loop region body starts move mode
         setIsDragging(true);
         setDragMode('move');
         // Store offset from click position to region start (for smooth dragging)
@@ -162,7 +195,7 @@ export const TimeRuler: React.FC<TimeRulerProps> = ({ width, height = 30 }) => {
         seekTo(snappedTick);
       }
     },
-    [pixelToTick, snapToBar, seekTo, isInsideLoopRegion, loopRegion.startTick]
+    [pixelToTick, snapToBar, seekTo, hoverPosition, loopRegion.startTick, loopRegion.endTick]
   );
 
   // Handle mouse move during drag
@@ -177,13 +210,25 @@ export const TimeRuler: React.FC<TimeRulerProps> = ({ width, height = 30 }) => {
         // In move mode, calculate new region start based on offset
         const newStart = snapToBar(Math.max(0, tick - moveOffset));
         setDragCurrentTick(newStart);
+      } else if (dragMode === 'resize-start') {
+        // In resize-start mode, snap to bar but constrain to valid range
+        const snappedTick = snapToBar(Math.max(0, tick));
+        // Ensure minimum 1 bar width: new start must be at least 1 bar before current end
+        const maxStart = loopRegion.endTick - ticksPerBar;
+        setDragCurrentTick(Math.min(snappedTick, maxStart));
+      } else if (dragMode === 'resize-end') {
+        // In resize-end mode, snap to bar but constrain to valid range
+        const snappedTick = snapToBar(Math.max(0, tick));
+        // Ensure minimum 1 bar width: new end must be at least 1 bar after current start
+        const minEnd = loopRegion.startTick + ticksPerBar;
+        setDragCurrentTick(Math.max(snappedTick, minEnd));
       } else {
         // In create mode, snap to bar
         const snappedTick = snapToBar(tick);
         setDragCurrentTick(snappedTick);
       }
     },
-    [isDragging, dragMode, pixelToTick, snapToBar, moveOffset]
+    [isDragging, dragMode, pixelToTick, snapToBar, moveOffset, loopRegion.startTick, loopRegion.endTick, ticksPerBar]
   );
 
   // Handle mouse up - finish drag
@@ -201,6 +246,20 @@ export const TimeRuler: React.FC<TimeRulerProps> = ({ width, height = 30 }) => {
         const newStart = Math.max(0, dragCurrentTick);
         const newEnd = newStart + regionWidth;
         setLoopRegion(newStart, newEnd);
+      } else if (dragMode === 'resize-start') {
+        // Resize-start mode: update start tick, keep end fixed
+        const newStart = Math.max(0, dragCurrentTick);
+        // Enforce minimum 1 bar width
+        const maxStart = loopRegion.endTick - ticksPerBar;
+        const constrainedStart = Math.min(newStart, maxStart);
+        setLoopRegion(constrainedStart, loopRegion.endTick);
+      } else if (dragMode === 'resize-end') {
+        // Resize-end mode: update end tick, keep start fixed
+        const newEnd = Math.max(0, dragCurrentTick);
+        // Enforce minimum 1 bar width
+        const minEnd = loopRegion.startTick + ticksPerBar;
+        const constrainedEnd = Math.max(newEnd, minEnd);
+        setLoopRegion(loopRegion.startTick, constrainedEnd);
       } else if (dragStartTick !== null) {
         // Create mode: calculate final loop region (ensure start < end)
         const regionStart = Math.min(dragStartTick, dragCurrentTick);
@@ -243,6 +302,16 @@ export const TimeRuler: React.FC<TimeRulerProps> = ({ width, height = 30 }) => {
         const x = (dragCurrentTick - startTick) * pixelsPerTick;
         const displayWidth = regionWidth * pixelsPerTick;
         return { x, width: displayWidth, active: false };
+      } else if (dragMode === 'resize-start') {
+        // Show preview with new start position during resize-start
+        const x = (dragCurrentTick - startTick) * pixelsPerTick;
+        const displayWidth = (loopRegion.endTick - dragCurrentTick) * pixelsPerTick;
+        return { x, width: displayWidth, active: false };
+      } else if (dragMode === 'resize-end') {
+        // Show preview with new end position during resize-end
+        const x = (loopRegion.startTick - startTick) * pixelsPerTick;
+        const displayWidth = (dragCurrentTick - loopRegion.startTick) * pixelsPerTick;
+        return { x, width: displayWidth, active: false };
       } else if (dragStartTick !== null) {
         // Show preview during create drag
         const previewStart = Math.min(dragStartTick, dragCurrentTick);
@@ -265,10 +334,14 @@ export const TimeRuler: React.FC<TimeRulerProps> = ({ width, height = 30 }) => {
   const cursor = isDragging
     ? dragMode === 'move'
       ? 'grabbing'
-      : 'col-resize'
-    : isHoveringLoop
-      ? 'grab'
-      : 'pointer';
+      : dragMode === 'resize-start' || dragMode === 'resize-end'
+        ? 'ew-resize'
+        : 'col-resize'
+    : hoverPosition === 'left-edge' || hoverPosition === 'right-edge'
+      ? 'ew-resize'
+      : hoverPosition === 'body'
+        ? 'grab'
+        : 'pointer';
 
   return (
     <div
@@ -278,7 +351,7 @@ export const TimeRuler: React.FC<TimeRulerProps> = ({ width, height = 30 }) => {
       onMouseDown={handleMouseDown}
       onMouseMove={handleHover}
       onMouseLeave={handleMouseLeave}
-      title="Click to seek • Shift+drag to set loop region • Drag loop to move"
+      title="Click to seek • Shift+drag to set loop region • Drag loop to move • Drag edges to resize"
     >
       <svg width={width} height={height}>
         {/* Background */}
