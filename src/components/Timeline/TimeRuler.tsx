@@ -22,10 +22,15 @@ export const TimeRuler: React.FC<TimeRulerProps> = ({ width, height = 30 }) => {
   const { bpm, timeSignatureNumerator } = project;
   const { startTick, endTick } = timelineViewport;
 
-  // Drag state for loop region selection
+  // Drag state for loop region selection and movement
   const [isDragging, setIsDragging] = useState(false);
+  const [dragMode, setDragMode] = useState<'create' | 'move' | null>(null);
   const [dragStartTick, setDragStartTick] = useState<number | null>(null);
   const [dragCurrentTick, setDragCurrentTick] = useState<number | null>(null);
+  // For move mode: store the offset from click position to region start
+  const [moveOffset, setMoveOffset] = useState<number>(0);
+  // Track if hovering over loop region for cursor change
+  const [isHoveringLoop, setIsHoveringLoop] = useState(false);
   const rulerRef = useRef<HTMLDivElement>(null);
 
   const ticksPerBar = TICKS_PER_BEAT * timeSignatureNumerator;
@@ -98,6 +103,35 @@ export const TimeRuler: React.FC<TimeRulerProps> = ({ width, height = 30 }) => {
     [ticksPerBar]
   );
 
+  // Check if a tick position is inside the current loop region
+  const isInsideLoopRegion = useCallback(
+    (tick: number): boolean => {
+      if (!loopRegion.enabled) return false;
+      return tick >= loopRegion.startTick && tick <= loopRegion.endTick;
+    },
+    [loopRegion.enabled, loopRegion.startTick, loopRegion.endTick]
+  );
+
+  // Handle hover to show move cursor when over loop region
+  const handleHover = useCallback(
+    (e: React.MouseEvent) => {
+      if (isDragging) return; // Don't change hover state while dragging
+      if (!rulerRef.current) return;
+      const rect = rulerRef.current.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const tick = pixelToTick(x);
+      setIsHoveringLoop(isInsideLoopRegion(tick));
+    },
+    [isDragging, pixelToTick, isInsideLoopRegion]
+  );
+
+  // Handle mouse leave
+  const handleMouseLeave = useCallback(() => {
+    if (!isDragging) {
+      setIsHoveringLoop(false);
+    }
+  }, [isDragging]);
+
   // Handle mouse down - start drag or seek
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
@@ -107,18 +141,28 @@ export const TimeRuler: React.FC<TimeRulerProps> = ({ width, height = 30 }) => {
       const tick = pixelToTick(x);
       const snappedTick = snapToBar(tick);
 
-      // Shift+click starts loop region selection
+      // Shift+click starts loop region selection (create mode)
       if (e.shiftKey) {
         setIsDragging(true);
+        setDragMode('create');
         setDragStartTick(snappedTick);
         setDragCurrentTick(snappedTick);
+        e.preventDefault();
+      } else if (isInsideLoopRegion(tick)) {
+        // Click inside loop region starts move mode
+        setIsDragging(true);
+        setDragMode('move');
+        // Store offset from click position to region start (for smooth dragging)
+        setMoveOffset(tick - loopRegion.startTick);
+        setDragStartTick(loopRegion.startTick);
+        setDragCurrentTick(loopRegion.startTick);
         e.preventDefault();
       } else {
         // Regular click seeks to position
         seekTo(snappedTick);
       }
     },
-    [pixelToTick, snapToBar, seekTo]
+    [pixelToTick, snapToBar, seekTo, isInsideLoopRegion, loopRegion.startTick]
   );
 
   // Handle mouse move during drag
@@ -128,35 +172,54 @@ export const TimeRuler: React.FC<TimeRulerProps> = ({ width, height = 30 }) => {
       const rect = rulerRef.current.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const tick = pixelToTick(x);
-      const snappedTick = snapToBar(tick);
-      setDragCurrentTick(snappedTick);
+
+      if (dragMode === 'move') {
+        // In move mode, calculate new region start based on offset
+        const newStart = snapToBar(Math.max(0, tick - moveOffset));
+        setDragCurrentTick(newStart);
+      } else {
+        // In create mode, snap to bar
+        const snappedTick = snapToBar(tick);
+        setDragCurrentTick(snappedTick);
+      }
     },
-    [isDragging, pixelToTick, snapToBar]
+    [isDragging, dragMode, pixelToTick, snapToBar, moveOffset]
   );
 
   // Handle mouse up - finish drag
   const handleMouseUp = useCallback(
     (e: MouseEvent) => {
-      if (!isDragging || dragStartTick === null || dragCurrentTick === null) {
+      if (!isDragging || dragCurrentTick === null) {
         setIsDragging(false);
+        setDragMode(null);
         return;
       }
 
-      // Calculate final loop region (ensure start < end)
-      const regionStart = Math.min(dragStartTick, dragCurrentTick);
-      const regionEnd = Math.max(dragStartTick, dragCurrentTick);
+      if (dragMode === 'move') {
+        // Move mode: update region position maintaining width
+        const regionWidth = loopRegion.endTick - loopRegion.startTick;
+        const newStart = Math.max(0, dragCurrentTick);
+        const newEnd = newStart + regionWidth;
+        setLoopRegion(newStart, newEnd);
+      } else if (dragStartTick !== null) {
+        // Create mode: calculate final loop region (ensure start < end)
+        const regionStart = Math.min(dragStartTick, dragCurrentTick);
+        const regionEnd = Math.max(dragStartTick, dragCurrentTick);
 
-      // Only set loop if region is at least 1 bar
-      if (regionEnd - regionStart >= ticksPerBar) {
-        setLoopRegion(regionStart, regionEnd);
-        setLoopEnabled(true);
+        // Only set loop if region is at least 1 bar
+        if (regionEnd - regionStart >= ticksPerBar) {
+          setLoopRegion(regionStart, regionEnd);
+          setLoopEnabled(true);
+        }
       }
 
       setIsDragging(false);
+      setDragMode(null);
       setDragStartTick(null);
       setDragCurrentTick(null);
+      setMoveOffset(0);
     },
-    [isDragging, dragStartTick, dragCurrentTick, ticksPerBar, setLoopRegion, setLoopEnabled]
+    [isDragging, dragMode, dragStartTick, dragCurrentTick, ticksPerBar, loopRegion.startTick, loopRegion.endTick, setLoopRegion, setLoopEnabled]
   );
 
   // Attach global mouse events for drag tracking
@@ -173,29 +236,49 @@ export const TimeRuler: React.FC<TimeRulerProps> = ({ width, height = 30 }) => {
 
   // Calculate loop region display position
   const loopRegionDisplay = useMemo(() => {
-    if (isDragging && dragStartTick !== null && dragCurrentTick !== null) {
-      // Show preview during drag
-      const previewStart = Math.min(dragStartTick, dragCurrentTick);
-      const previewEnd = Math.max(dragStartTick, dragCurrentTick);
-      const x = (previewStart - startTick) * pixelsPerTick;
-      const displayWidth = (previewEnd - previewStart) * pixelsPerTick;
-      return { x, width: displayWidth, active: false };
-    } else if (loopRegion.enabled) {
+    if (isDragging && dragCurrentTick !== null) {
+      if (dragMode === 'move') {
+        // Show preview at new position during move
+        const regionWidth = loopRegion.endTick - loopRegion.startTick;
+        const x = (dragCurrentTick - startTick) * pixelsPerTick;
+        const displayWidth = regionWidth * pixelsPerTick;
+        return { x, width: displayWidth, active: false };
+      } else if (dragStartTick !== null) {
+        // Show preview during create drag
+        const previewStart = Math.min(dragStartTick, dragCurrentTick);
+        const previewEnd = Math.max(dragStartTick, dragCurrentTick);
+        const x = (previewStart - startTick) * pixelsPerTick;
+        const displayWidth = (previewEnd - previewStart) * pixelsPerTick;
+        return { x, width: displayWidth, active: false };
+      }
+    }
+    if (loopRegion.enabled) {
       // Show saved loop region
       const x = (loopRegion.startTick - startTick) * pixelsPerTick;
       const displayWidth = (loopRegion.endTick - loopRegion.startTick) * pixelsPerTick;
       return { x, width: displayWidth, active: true };
     }
     return null;
-  }, [isDragging, dragStartTick, dragCurrentTick, loopRegion, startTick, pixelsPerTick]);
+  }, [isDragging, dragMode, dragStartTick, dragCurrentTick, loopRegion, startTick, pixelsPerTick]);
+
+  // Determine cursor based on state
+  const cursor = isDragging
+    ? dragMode === 'move'
+      ? 'grabbing'
+      : 'col-resize'
+    : isHoveringLoop
+      ? 'grab'
+      : 'pointer';
 
   return (
     <div
       ref={rulerRef}
       className="time-ruler"
-      style={{ width, height, position: 'relative', cursor: 'pointer' }}
+      style={{ width, height, position: 'relative', cursor }}
       onMouseDown={handleMouseDown}
-      title="Click to seek • Shift+drag to set loop region"
+      onMouseMove={handleHover}
+      onMouseLeave={handleMouseLeave}
+      title="Click to seek • Shift+drag to set loop region • Drag loop to move"
     >
       <svg width={width} height={height}>
         {/* Background */}
