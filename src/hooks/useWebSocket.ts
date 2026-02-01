@@ -99,7 +99,7 @@ interface QueuedCommand {
   timestamp: number;
 }
 
-export function useWebSocket(url: string = 'ws://localhost:8765'): UseWebSocketReturn {
+export function useWebSocket(url: string = import.meta.env.VITE_WS_URL || 'ws://localhost:8765'): UseWebSocketReturn {
   const [isConnected, setIsConnected] = useState(false);
   const [isDemoMode, setIsDemoMode] = useState(false);
   const [status, setStatus] = useState<EngineStatus | null>(null);
