@@ -1053,13 +1053,15 @@ class BeatBoxDawEngine:
         self._audio_recording_active = True
 
         # Ensure audio capture is running and feeding to recorder
-        if not self.audio_capture.is_running:
-            self.audio_capture.add_callback(self._track_recording_callback)
-            self.audio_capture.start()
-        else:
-            # Add recording callback if not already added
+        # Note: _audio_callback already handles recording when _audio_recording_active is True
+        # Only add _track_recording_callback if _audio_callback is NOT registered
+        # to avoid duplicate audio data being recorded
+        if self._audio_callback not in self.audio_capture.callbacks:
             if self._track_recording_callback not in self.audio_capture.callbacks:
                 self.audio_capture.add_callback(self._track_recording_callback)
+
+        if not self.audio_capture.is_running:
+            self.audio_capture.start()
 
         self._broadcast_threadsafe({
             'type': 'track_recording_started',
