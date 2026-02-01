@@ -2,9 +2,12 @@
  * EffectEditor Component
  * UI for editing individual effect parameters
  * Wires parameter changes to AudioEngine for real-time audio processing
+ *
+ * Features modern glassmorphism design with Motion animations
  */
 
 import React, { useCallback, useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { getAudioEngine } from '../../audio';
 import type {
   EffectType,
@@ -14,6 +17,7 @@ import type {
   DelayParameters,
   ReverbParameters,
 } from '../../audio';
+import { cn } from '../../lib/utils';
 
 interface EffectEditorProps {
   trackId: string;
@@ -32,6 +36,14 @@ const EFFECT_NAMES: Record<EffectType, string> = {
   compressor: 'Compressor',
   delay: 'Delay',
   reverb: 'Reverb',
+};
+
+// Effect icons (Unicode symbols)
+const EFFECT_ICONS: Record<EffectType, string> = {
+  eq3band: '◐',
+  compressor: '◉',
+  delay: '◎',
+  reverb: '◈',
 };
 
 // Parameter configurations
@@ -117,6 +129,7 @@ export const EffectEditor: React.FC<EffectEditorProps> = ({
 
   const paramConfigs = EFFECT_PARAM_CONFIGS[effectType];
   const effectName = EFFECT_NAMES[effectType];
+  const effectIcon = EFFECT_ICONS[effectType];
 
   const formatValue = (paramName: string, value: number): string => {
     const config = paramConfigs[paramName];
@@ -132,130 +145,148 @@ export const EffectEditor: React.FC<EffectEditorProps> = ({
   };
 
   return (
-    <div
-      className="effect-editor"
-      style={{
-        backgroundColor: 'var(--bg-secondary)',
-        borderRadius: 8,
-        padding: isMobile ? '8px' : '12px',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: isMobile ? '8px' : '12px',
-        minWidth: isMobile ? 200 : 260,
-      }}
+    <motion.div
+      className={cn(
+        'effect-editor',
+        // Glassmorphism effect
+        'bg-slate-800/70 backdrop-blur-lg',
+        'border border-slate-700/50',
+        'rounded-xl shadow-xl shadow-black/30',
+        // Layout
+        'flex flex-col',
+        isMobile ? 'min-w-[200px] gap-2 p-2' : 'min-w-[260px] gap-3 p-3'
+      )}
+      initial={{ opacity: 0, scale: 0.95, y: -5 }}
+      animate={{ opacity: 1, scale: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.95, y: -5 }}
+      transition={{ duration: 0.2, ease: 'easeOut' }}
     >
       {/* Header */}
       <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          borderBottom: '1px solid rgba(255,255,255,0.1)',
-          paddingBottom: isMobile ? '6px' : '8px',
-        }}
+        className={cn(
+          'flex items-center justify-between',
+          'border-b border-slate-700/50',
+          isMobile ? 'pb-2' : 'pb-2.5'
+        )}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <button
+        <div className="flex items-center gap-2">
+          {/* Enable/Disable toggle */}
+          <motion.button
             onClick={handleEnabledToggle}
-            style={{
-              width: isMobile ? 24 : 28,
-              height: isMobile ? 24 : 28,
-              border: 'none',
-              borderRadius: 4,
-              cursor: 'pointer',
-              backgroundColor: enabled ? 'var(--success)' : 'var(--bg-tertiary)',
-              color: enabled ? 'var(--bg-primary)' : 'var(--text-secondary)',
-              fontSize: isMobile ? '0.65rem' : '0.75rem',
-              fontWeight: 700,
-              transition: 'background-color 0.1s ease',
-            }}
+            className={cn(
+              'font-bold rounded',
+              'border border-transparent',
+              'flex items-center justify-center',
+              'transition-colors duration-150',
+              enabled
+                ? 'bg-green-500 text-slate-900 border-green-400 shadow-md shadow-green-500/30'
+                : 'bg-slate-700/60 text-slate-500 hover:bg-slate-700 hover:text-slate-400',
+              isMobile
+                ? 'w-[26px] h-[26px] text-[0.65rem]'
+                : 'w-[30px] h-[30px] text-[0.75rem]'
+            )}
+            whileHover={{ scale: 1.08 }}
+            whileTap={{ scale: 0.92 }}
+            transition={{ type: 'spring', stiffness: 500, damping: 25 }}
             title={enabled ? 'Disable effect' : 'Enable effect'}
           >
             {enabled ? 'ON' : 'OFF'}
-          </button>
-          <span
-            style={{
-              fontSize: isMobile ? '0.85rem' : '0.95rem',
-              fontWeight: 600,
-              color: enabled ? 'var(--text-primary)' : 'var(--text-secondary)',
-            }}
-          >
-            {effectName}
-          </span>
+          </motion.button>
+
+          {/* Effect icon and name */}
+          <div className="flex items-center gap-1.5">
+            <span
+              className={cn(
+                'transition-colors duration-200',
+                enabled ? 'text-rose-400' : 'text-slate-600',
+                isMobile ? 'text-base' : 'text-lg'
+              )}
+            >
+              {effectIcon}
+            </span>
+            <span
+              className={cn(
+                'font-semibold transition-colors duration-200',
+                enabled ? 'text-slate-100' : 'text-slate-500',
+                isMobile ? 'text-[0.85rem]' : 'text-[0.95rem]'
+              )}
+            >
+              {effectName}
+            </span>
+          </div>
         </div>
+
+        {/* Close button */}
         {onClose && (
-          <button
+          <motion.button
             onClick={onClose}
-            style={{
-              width: isMobile ? 22 : 26,
-              height: isMobile ? 22 : 26,
-              border: 'none',
-              borderRadius: '50%',
-              cursor: 'pointer',
-              backgroundColor: 'var(--bg-tertiary)',
-              color: 'var(--text-secondary)',
-              fontSize: isMobile ? '0.8rem' : '0.9rem',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
+            className={cn(
+              'flex items-center justify-center',
+              'rounded-full',
+              'bg-slate-700/60 text-slate-400',
+              'transition-colors duration-150',
+              'hover:bg-slate-600 hover:text-slate-200',
+              isMobile
+                ? 'w-[22px] h-[22px] text-[0.85rem]'
+                : 'w-[26px] h-[26px] text-[0.95rem]'
+            )}
+            whileHover={{ scale: 1.1, rotate: 90 }}
+            whileTap={{ scale: 0.9 }}
+            transition={{ type: 'spring', stiffness: 400, damping: 20 }}
             title="Close editor"
           >
             ×
-          </button>
+          </motion.button>
         )}
       </div>
 
       {/* Parameters */}
-      <div
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: isMobile ? '6px' : '10px',
-          opacity: enabled ? 1 : 0.5,
-        }}
+      <motion.div
+        className={cn(
+          'flex flex-col',
+          'transition-opacity duration-200',
+          enabled ? 'opacity-100' : 'opacity-40',
+          isMobile ? 'gap-2' : 'gap-3'
+        )}
+        animate={{ opacity: enabled ? 1 : 0.4 }}
+        transition={{ duration: 0.2 }}
       >
-        {Object.entries(paramConfigs).map(([paramName, config]) => {
+        {Object.entries(paramConfigs).map(([paramName, config], index) => {
           const value = getParamValue(paramName);
 
           return (
-            <div
+            <motion.div
               key={paramName}
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '2px',
-              }}
+              className="flex flex-col gap-1"
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: index * 0.03, duration: 0.15 }}
             >
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                }}
-              >
+              {/* Parameter label and value */}
+              <div className="flex justify-between items-center">
                 <span
-                  style={{
-                    fontSize: isMobile ? '0.7rem' : '0.75rem',
-                    color: 'var(--text-secondary)',
-                    fontWeight: 500,
-                  }}
+                  className={cn(
+                    'font-medium text-slate-400',
+                    isMobile ? 'text-[0.7rem]' : 'text-[0.75rem]'
+                  )}
                 >
                   {config.label}
                 </span>
                 <span
-                  style={{
-                    fontSize: isMobile ? '0.65rem' : '0.7rem',
-                    color: 'var(--text-primary)',
-                    fontFamily: 'monospace',
-                    backgroundColor: 'var(--bg-tertiary)',
-                    padding: '2px 6px',
-                    borderRadius: 3,
-                  }}
+                  className={cn(
+                    'font-mono',
+                    'bg-slate-900/60 backdrop-blur-sm',
+                    'border border-slate-700/50',
+                    'rounded px-1.5 py-0.5',
+                    'text-slate-200',
+                    isMobile ? 'text-[0.6rem]' : 'text-[0.7rem]'
+                  )}
                 >
                   {formatValue(paramName, value)}
                 </span>
               </div>
+
+              {/* Slider */}
               <input
                 type="range"
                 min={config.min}
@@ -264,18 +295,58 @@ export const EffectEditor: React.FC<EffectEditorProps> = ({
                 value={value}
                 onChange={(e) => handleParameterChange(paramName, parseFloat(e.target.value))}
                 disabled={!enabled}
-                style={{
-                  width: '100%',
-                  height: isMobile ? 24 : 8,
-                  cursor: enabled ? 'pointer' : 'not-allowed',
-                  accentColor: 'var(--accent-primary)',
-                }}
+                className={cn(
+                  'w-full cursor-pointer',
+                  'appearance-none bg-transparent',
+                  // Track styling
+                  '[&::-webkit-slider-runnable-track]:h-1.5',
+                  '[&::-webkit-slider-runnable-track]:rounded-full',
+                  '[&::-webkit-slider-runnable-track]:bg-gradient-to-r',
+                  '[&::-webkit-slider-runnable-track]:from-slate-700',
+                  '[&::-webkit-slider-runnable-track]:to-slate-600',
+                  // Thumb styling
+                  '[&::-webkit-slider-thumb]:appearance-none',
+                  '[&::-webkit-slider-thumb]:w-3.5',
+                  '[&::-webkit-slider-thumb]:h-3.5',
+                  '[&::-webkit-slider-thumb]:rounded-full',
+                  '[&::-webkit-slider-thumb]:bg-gradient-to-b',
+                  '[&::-webkit-slider-thumb]:from-rose-400',
+                  '[&::-webkit-slider-thumb]:to-rose-500',
+                  '[&::-webkit-slider-thumb]:shadow-md',
+                  '[&::-webkit-slider-thumb]:shadow-rose-500/30',
+                  '[&::-webkit-slider-thumb]:mt-[-4px]',
+                  '[&::-webkit-slider-thumb]:transition-all',
+                  '[&::-webkit-slider-thumb]:duration-150',
+                  '[&::-webkit-slider-thumb]:hover:scale-125',
+                  '[&::-webkit-slider-thumb]:hover:from-rose-300',
+                  '[&::-webkit-slider-thumb]:hover:to-rose-400',
+                  '[&::-webkit-slider-thumb]:active:from-rose-500',
+                  '[&::-webkit-slider-thumb]:active:to-rose-600',
+                  // Disabled state
+                  !enabled && 'cursor-not-allowed opacity-50',
+                  !enabled && '[&::-webkit-slider-thumb]:from-slate-500',
+                  !enabled && '[&::-webkit-slider-thumb]:to-slate-600',
+                  !enabled && '[&::-webkit-slider-thumb]:shadow-none',
+                  // Height
+                  isMobile ? 'h-6' : 'h-5'
+                )}
               />
-            </div>
+            </motion.div>
           );
         })}
+      </motion.div>
+
+      {/* Footer hint */}
+      <div
+        className={cn(
+          'text-center text-slate-600',
+          'border-t border-slate-700/30 pt-2',
+          isMobile ? 'text-[0.6rem]' : 'text-[0.65rem]'
+        )}
+      >
+        {enabled ? 'Drag sliders to adjust' : 'Enable effect to adjust parameters'}
       </div>
-    </div>
+    </motion.div>
   );
 };
 
