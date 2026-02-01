@@ -3,7 +3,7 @@
 from .audio_capture import AudioCapture, AudioConfig
 from .onset_detector import OnsetDetector, OnsetConfig
 from .midi_output import MidiOutput, MidiEvent
-from .main import BeatBoxEngine, EngineConfig, EngineState
+from .main import BeatBoxDawEngine, EngineConfig, EngineState
 
 __all__ = [
     'AudioCapture',
@@ -12,7 +12,7 @@ __all__ = [
     'OnsetConfig',
     'MidiOutput',
     'MidiEvent',
-    'BeatBoxEngine',
+    'BeatBoxDawEngine',
     'EngineConfig',
     'EngineState',
 ]
