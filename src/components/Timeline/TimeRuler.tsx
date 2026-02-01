@@ -151,6 +151,23 @@ export const TimeRuler: React.FC<TimeRulerProps> = ({ width, height = 30 }) => {
     }
   }, [isDragging]);
 
+  // Handle double-click to remove loop region
+  const handleDoubleClick = useCallback(
+    (e: React.MouseEvent) => {
+      if (!rulerRef.current) return;
+      const rect = rulerRef.current.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const tick = pixelToTick(x);
+
+      // Check if double-click is on the loop region
+      if (loopRegion.enabled && tick >= loopRegion.startTick && tick <= loopRegion.endTick) {
+        setLoopEnabled(false);
+        e.preventDefault();
+      }
+    },
+    [pixelToTick, loopRegion.enabled, loopRegion.startTick, loopRegion.endTick, setLoopEnabled]
+  );
+
   // Handle mouse down - start drag or seek
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
@@ -416,7 +433,8 @@ export const TimeRuler: React.FC<TimeRulerProps> = ({ width, height = 30 }) => {
       onMouseDown={handleMouseDown}
       onMouseMove={handleHover}
       onMouseLeave={handleMouseLeave}
-      title="Click to seek • Shift+drag to set loop region • Drag loop to move • Drag edges to resize"
+      onDoubleClick={handleDoubleClick}
+      title="Click to seek • Shift+drag to set loop region • Drag loop to move • Drag edges to resize • Double-click loop to disable"
     >
       <svg width={width} height={height}>
         {/* Background */}
