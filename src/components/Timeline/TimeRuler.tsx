@@ -1,12 +1,14 @@
 /**
  * TimeRuler Component
  * Displays the time ruler with bar/beat markers at the top of the timeline
+ * Supports click-to-seek and drag-to-select loop region
  */
 
-import React, { useMemo } from 'react';
-import { TICKS_PER_BEAT, ticksToMeasures } from '../../types/project';
+import React, { useMemo, useState, useCallback, useRef, useEffect } from 'react';
+import { TICKS_PER_BEAT } from '../../types/project';
 import { useProjectStore } from '../../stores/projectStore';
 import { useUIStore } from '../../stores/uiStore';
+import { useTransportStore } from '../../stores/transportStore';
 
 interface TimeRulerProps {
   width: number;
@@ -16,8 +18,15 @@ interface TimeRulerProps {
 export const TimeRuler: React.FC<TimeRulerProps> = ({ width, height = 30 }) => {
   const { project } = useProjectStore();
   const { timelineViewport } = useUIStore();
+  const { loopRegion, setLoopRegion, setLoopEnabled, seekTo } = useTransportStore();
   const { bpm, timeSignatureNumerator } = project;
   const { startTick, endTick } = timelineViewport;
+
+  // Drag state for loop region selection
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStartTick, setDragStartTick] = useState<number | null>(null);
+  const [dragCurrentTick, setDragCurrentTick] = useState<number | null>(null);
+  const rulerRef = useRef<HTMLDivElement>(null);
 
   const ticksPerBar = TICKS_PER_BEAT * timeSignatureNumerator;
   const tickRange = endTick - startTick;
@@ -73,11 +82,136 @@ export const TimeRuler: React.FC<TimeRulerProps> = ({ width, height = 30 }) => {
     return result;
   }, [startTick, endTick, width, ticksPerBar]);
 
+  // Convert pixel position to tick
+  const pixelToTick = useCallback(
+    (pixelX: number): number => {
+      return Math.max(0, startTick + pixelX / pixelsPerTick);
+    },
+    [startTick, pixelsPerTick]
+  );
+
+  // Snap tick to bar boundary for cleaner loop regions
+  const snapToBar = useCallback(
+    (tick: number): number => {
+      return Math.round(tick / ticksPerBar) * ticksPerBar;
+    },
+    [ticksPerBar]
+  );
+
+  // Handle mouse down - start drag or seek
+  const handleMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      if (!rulerRef.current) return;
+      const rect = rulerRef.current.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const tick = pixelToTick(x);
+      const snappedTick = snapToBar(tick);
+
+      // Shift+click starts loop region selection
+      if (e.shiftKey) {
+        setIsDragging(true);
+        setDragStartTick(snappedTick);
+        setDragCurrentTick(snappedTick);
+        e.preventDefault();
+      } else {
+        // Regular click seeks to position
+        seekTo(snappedTick);
+      }
+    },
+    [pixelToTick, snapToBar, seekTo]
+  );
+
+  // Handle mouse move during drag
+  const handleMouseMove = useCallback(
+    (e: MouseEvent) => {
+      if (!isDragging || !rulerRef.current) return;
+      const rect = rulerRef.current.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const tick = pixelToTick(x);
+      const snappedTick = snapToBar(tick);
+      setDragCurrentTick(snappedTick);
+    },
+    [isDragging, pixelToTick, snapToBar]
+  );
+
+  // Handle mouse up - finish drag
+  const handleMouseUp = useCallback(
+    (e: MouseEvent) => {
+      if (!isDragging || dragStartTick === null || dragCurrentTick === null) {
+        setIsDragging(false);
+        return;
+      }
+
+      // Calculate final loop region (ensure start < end)
+      const regionStart = Math.min(dragStartTick, dragCurrentTick);
+      const regionEnd = Math.max(dragStartTick, dragCurrentTick);
+
+      // Only set loop if region is at least 1 bar
+      if (regionEnd - regionStart >= ticksPerBar) {
+        setLoopRegion(regionStart, regionEnd);
+        setLoopEnabled(true);
+      }
+
+      setIsDragging(false);
+      setDragStartTick(null);
+      setDragCurrentTick(null);
+    },
+    [isDragging, dragStartTick, dragCurrentTick, ticksPerBar, setLoopRegion, setLoopEnabled]
+  );
+
+  // Attach global mouse events for drag tracking
+  useEffect(() => {
+    if (isDragging) {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+      return () => {
+        window.removeEventListener('mousemove', handleMouseMove);
+        window.removeEventListener('mouseup', handleMouseUp);
+      };
+    }
+  }, [isDragging, handleMouseMove, handleMouseUp]);
+
+  // Calculate loop region display position
+  const loopRegionDisplay = useMemo(() => {
+    if (isDragging && dragStartTick !== null && dragCurrentTick !== null) {
+      // Show preview during drag
+      const previewStart = Math.min(dragStartTick, dragCurrentTick);
+      const previewEnd = Math.max(dragStartTick, dragCurrentTick);
+      const x = (previewStart - startTick) * pixelsPerTick;
+      const displayWidth = (previewEnd - previewStart) * pixelsPerTick;
+      return { x, width: displayWidth, active: false };
+    } else if (loopRegion.enabled) {
+      // Show saved loop region
+      const x = (loopRegion.startTick - startTick) * pixelsPerTick;
+      const displayWidth = (loopRegion.endTick - loopRegion.startTick) * pixelsPerTick;
+      return { x, width: displayWidth, active: true };
+    }
+    return null;
+  }, [isDragging, dragStartTick, dragCurrentTick, loopRegion, startTick, pixelsPerTick]);
+
   return (
-    <div className="time-ruler" style={{ width, height, position: 'relative' }}>
+    <div
+      ref={rulerRef}
+      className="time-ruler"
+      style={{ width, height, position: 'relative', cursor: 'pointer' }}
+      onMouseDown={handleMouseDown}
+    >
       <svg width={width} height={height}>
         {/* Background */}
         <rect x={0} y={0} width={width} height={height} fill="var(--bg-tertiary)" />
+
+        {/* Loop Region Overlay */}
+        {loopRegionDisplay && loopRegionDisplay.width > 0 && (
+          <rect
+            x={loopRegionDisplay.x}
+            y={0}
+            width={loopRegionDisplay.width}
+            height={height}
+            fill={loopRegionDisplay.active ? 'rgba(74, 222, 128, 0.3)' : 'rgba(74, 222, 128, 0.2)'}
+            stroke={loopRegionDisplay.active ? 'var(--accent-primary)' : 'rgba(74, 222, 128, 0.5)'}
+            strokeWidth={loopRegionDisplay.active ? 2 : 1}
+          />
+        )}
 
         {/* Markers */}
         {markers.map((marker, idx) => {

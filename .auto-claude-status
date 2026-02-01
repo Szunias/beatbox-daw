@@ -3,23 +3,23 @@
   "spec": "002-dobra-og-lnie-napraw-bo-nie-dziala-nagrywanie-g-os",
   "state": "building",
   "subtasks": {
-    "completed": 5,
+    "completed": 9,
     "total": 18,
     "in_progress": 1,
     "failed": 0
   },
   "phase": {
-    "current": "Frontend: Quick UI Fixes",
+    "current": "Frontend: Add Loop Region Selection",
     "id": null,
-    "total": 4
+    "total": 3
   },
   "workers": {
     "active": 0,
     "max": 1
   },
   "session": {
-    "number": 6,
+    "number": 10,
     "started_at": "2026-02-01T10:24:23.267795"
   },
-  "last_update": "2026-02-01T11:27:01.870709"
+  "last_update": "2026-02-01T11:34:18.969103"
 }
