@@ -51,6 +51,11 @@ export const Timeline: React.FC<TimelineProps> = ({ height = 400 }) => {
         icon: '🎹',
         onClick: () => addTrack('midi'),
       },
+      {
+        label: 'Add Audio Track',
+        icon: '🎵',
+        onClick: () => addTrack('audio'),
+      },
     ];
 
     // Add track-specific options if a track is selected
@@ -207,6 +212,21 @@ export const Timeline: React.FC<TimelineProps> = ({ height = 400 }) => {
           >
             +MIDI
           </button>
+          <button
+            onClick={() => handleAddTrack('audio')}
+            title="Add Audio Track"
+            style={{
+              padding: '2px 6px',
+              fontSize: '0.7rem',
+              border: 'none',
+              borderRadius: 3,
+              backgroundColor: 'var(--warning)',
+              color: 'var(--bg-primary)',
+              cursor: 'pointer',
+            }}
+          >
+            +Audio
+          </button>
         </div>
 
         {/* Time ruler */}
@@ -251,7 +271,7 @@ export const Timeline: React.FC<TimelineProps> = ({ height = 400 }) => {
             >
               No tracks yet.
               <br />
-              Click +Drum or +MIDI to add a track.
+              Click +Drum, +MIDI, or +Audio to add a track.
             </div>
           )}
         </div>
