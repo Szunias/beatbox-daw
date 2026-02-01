@@ -265,6 +265,7 @@ class BeatBoxDawEngine:
         """Process incoming audio buffer for beatbox detection and recording."""
         # Feed audio to AudioRecorder if track recording is active
         if self._audio_recording_active:
+            print(f"[Recording] Audio buffer added: {len(audio)} samples, max amplitude: {np.abs(audio).max():.4f}")
             self.audio_recorder.add_audio_buffer(audio)
 
         if self.state != EngineState.RUNNING:
