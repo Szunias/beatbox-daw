@@ -9,6 +9,7 @@ import { Track } from '../../types/project';
 import { useProjectStore } from '../../stores/projectStore';
 import { getAudioEngine } from '../../audio';
 import { VUMeter } from './VUMeter';
+import { EffectRack } from './EffectRack';
 
 interface ChannelProps {
   track: Track;
@@ -28,6 +29,7 @@ export const Channel: React.FC<ChannelProps> = ({ track, level = 0, isMaster = f
 
   const [isEditing, setIsEditing] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const [showEffectRack, setShowEffectRack] = useState(false);
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768);
@@ -117,6 +119,7 @@ export const Channel: React.FC<ChannelProps> = ({ track, level = 0, isMaster = f
         border: isSelected ? '2px solid var(--accent-primary)' : '2px solid var(--bg-tertiary)',
         transition: 'background-color 0.15s ease, border-color 0.15s ease',
         flexShrink: 0,
+        position: 'relative',
       }}
     >
       {/* Channel name */}
@@ -300,6 +303,52 @@ export const Channel: React.FC<ChannelProps> = ({ track, level = 0, isMaster = f
       >
         {formatVolumeDb(track.volume)}
       </div>
+
+      {/* FX Button - opens Effect Rack */}
+      {!isMaster && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            setShowEffectRack(!showEffectRack);
+          }}
+          style={{
+            width: '100%',
+            height: isMobile ? 22 : 24,
+            border: 'none',
+            borderRadius: 4,
+            fontSize: fontSize.button,
+            fontWeight: 700,
+            cursor: 'pointer',
+            backgroundColor: showEffectRack ? 'var(--accent-primary)' : 'var(--bg-tertiary)',
+            color: showEffectRack ? 'var(--bg-primary)' : 'var(--text-secondary)',
+            transition: 'background-color 0.1s ease',
+          }}
+          title="Toggle Effect Rack"
+        >
+          FX
+        </button>
+      )}
+
+      {/* Effect Rack - shown when FX button is clicked */}
+      {!isMaster && showEffectRack && (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            position: 'absolute',
+            top: '100%',
+            left: 0,
+            marginTop: 4,
+            zIndex: 100,
+            boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+          }}
+        >
+          <EffectRack
+            trackId={track.id}
+            trackColor={track.color}
+            maxEffects={4}
+          />
+        </div>
+      )}
     </div>
   );
 };

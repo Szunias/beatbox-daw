@@ -43,13 +43,15 @@ export const Timeline: React.FC<TimelineProps> = ({ height = 400 }) => {
     const items: MenuItem[] = [
       {
         label: 'Add Drum Track',
-        icon: '🥁',
         onClick: () => addTrack('drum'),
       },
       {
         label: 'Add MIDI Track',
-        icon: '🎹',
         onClick: () => addTrack('midi'),
+      },
+      {
+        label: 'Add Audio Track',
+        onClick: () => addTrack('audio'),
       },
     ];
 
@@ -58,7 +60,6 @@ export const Timeline: React.FC<TimelineProps> = ({ height = 400 }) => {
       items.push({ label: '', onClick: () => {}, divider: true });
       items.push({
         label: 'Delete Track',
-        icon: '🗑️',
         onClick: () => {
           removeTrack(selectedTrackId);
         },
@@ -68,7 +69,6 @@ export const Timeline: React.FC<TimelineProps> = ({ height = 400 }) => {
     items.push({ label: '', onClick: () => {}, divider: true });
     items.push({
       label: 'Stop Playback',
-      icon: '⏹️',
       onClick: () => stop(),
     });
 
@@ -207,6 +207,21 @@ export const Timeline: React.FC<TimelineProps> = ({ height = 400 }) => {
           >
             +MIDI
           </button>
+          <button
+            onClick={() => handleAddTrack('audio')}
+            title="Add Audio Track"
+            style={{
+              padding: '2px 6px',
+              fontSize: '0.7rem',
+              border: 'none',
+              borderRadius: 3,
+              backgroundColor: 'var(--warning)',
+              color: 'var(--bg-primary)',
+              cursor: 'pointer',
+            }}
+          >
+            +Audio
+          </button>
         </div>
 
         {/* Time ruler */}
@@ -251,7 +266,7 @@ export const Timeline: React.FC<TimelineProps> = ({ height = 400 }) => {
             >
               No tracks yet.
               <br />
-              Click +Drum or +MIDI to add a track.
+              Click +Drum, +MIDI, or +Audio to add a track.
             </div>
           )}
         </div>
