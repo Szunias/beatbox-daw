@@ -2,12 +2,16 @@
  * EffectRack Component
  * Manages effect chain for a track with add/remove/reorder functionality
  * Wires to AudioEngine's EffectsProcessor for real-time audio processing
+ *
+ * Features modern glassmorphism design with Motion animations
  */
 
 import React, { useState, useCallback, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { getAudioEngine } from '../../audio';
 import type { EffectType, EffectParameters } from '../../audio';
 import { EffectEditor } from './EffectEditor';
+import { cn } from '../../lib/utils';
 
 interface EffectInfo {
   id: string;
@@ -142,356 +146,340 @@ export const EffectRack: React.FC<EffectRackProps> = ({
   const selectedEffect = selectedEffectId ? effects.find((e) => e.id === selectedEffectId) : null;
 
   return (
-    <div
-      className="effect-rack"
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        backgroundColor: 'var(--bg-primary)',
-        borderRadius: 8,
-        overflow: 'hidden',
-        minWidth: isMobile ? 200 : 280,
-      }}
+    <motion.div
+      className={cn(
+        'effect-rack',
+        'flex flex-col',
+        // Glassmorphism effect
+        'bg-slate-800/60 backdrop-blur-lg',
+        'border border-slate-700/50',
+        'rounded-xl shadow-xl',
+        'overflow-hidden',
+        isMobile ? 'min-w-[200px]' : 'min-w-[280px]'
+      )}
+      initial={{ opacity: 0, y: -10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.2, ease: 'easeOut' }}
     >
       {/* Header */}
       <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: isMobile ? '6px 8px' : '8px 12px',
-          backgroundColor: 'var(--bg-tertiary)',
-          borderBottom: '1px solid rgba(255,255,255,0.1)',
-        }}
+        className={cn(
+          'flex items-center justify-between',
+          'bg-slate-900/60 backdrop-blur-md',
+          'border-b border-slate-700/50',
+          isMobile ? 'px-2 py-1.5' : 'px-3 py-2'
+        )}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div className="flex items-center gap-2">
+          {/* Track color indicator */}
           <span
-            style={{
-              width: 4,
-              height: isMobile ? 14 : 16,
-              backgroundColor: trackColor,
-              borderRadius: 2,
-            }}
+            className={cn(
+              'w-1 rounded-full',
+              isMobile ? 'h-3.5' : 'h-4'
+            )}
+            style={{ backgroundColor: trackColor }}
           />
           <span
-            style={{
-              fontSize: isMobile ? '0.8rem' : '0.9rem',
-              fontWeight: 600,
-              color: 'var(--text-primary)',
-            }}
+            className={cn(
+              'font-semibold text-slate-100',
+              isMobile ? 'text-[0.8rem]' : 'text-[0.9rem]'
+            )}
           >
             Effects
           </span>
+          {/* Effect count badge */}
           <span
-            style={{
-              fontSize: isMobile ? '0.65rem' : '0.75rem',
-              color: 'var(--text-secondary)',
-              backgroundColor: 'var(--bg-primary)',
-              padding: '2px 6px',
-              borderRadius: 8,
-            }}
+            className={cn(
+              'bg-slate-700/60 text-slate-400',
+              'px-1.5 py-0.5 rounded-md',
+              'font-medium',
+              isMobile ? 'text-[0.65rem]' : 'text-[0.75rem]'
+            )}
           >
             {effects.length}/{maxEffects}
           </span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+
+        <div className="flex items-center gap-1">
           {/* Bypass button */}
-          <button
+          <motion.button
             onClick={handleToggleBypass}
-            style={{
-              padding: isMobile ? '3px 6px' : '4px 8px',
-              border: 'none',
-              borderRadius: 4,
-              cursor: 'pointer',
-              fontSize: isMobile ? '0.6rem' : '0.7rem',
-              fontWeight: 600,
-              backgroundColor: bypassed ? 'var(--warning)' : 'var(--bg-secondary)',
-              color: bypassed ? 'var(--bg-primary)' : 'var(--text-secondary)',
-              transition: 'background-color 0.1s ease',
-            }}
+            className={cn(
+              'font-bold rounded',
+              'border border-transparent',
+              'transition-colors duration-150',
+              bypassed
+                ? 'bg-amber-500 text-slate-900 border-amber-400'
+                : 'bg-slate-700/60 text-slate-400 hover:bg-slate-700 hover:text-slate-300',
+              isMobile ? 'px-1.5 py-0.5 text-[0.6rem]' : 'px-2 py-1 text-[0.7rem]'
+            )}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.92 }}
+            transition={{ type: 'spring', stiffness: 500, damping: 25 }}
             title={bypassed ? 'Enable effects' : 'Bypass all effects'}
           >
             BYP
-          </button>
+          </motion.button>
+
           {/* Add button */}
-          <div style={{ position: 'relative' }}>
-            <button
+          <div className="relative">
+            <motion.button
               onClick={() => setShowAddMenu(!showAddMenu)}
               disabled={effects.length >= maxEffects}
-              style={{
-                padding: isMobile ? '3px 6px' : '4px 8px',
-                border: 'none',
-                borderRadius: 4,
-                cursor: effects.length >= maxEffects ? 'not-allowed' : 'pointer',
-                fontSize: isMobile ? '0.7rem' : '0.8rem',
-                fontWeight: 600,
-                backgroundColor: 'var(--accent-primary)',
-                color: 'var(--text-primary)',
-                opacity: effects.length >= maxEffects ? 0.5 : 1,
-              }}
+              className={cn(
+                'font-bold rounded',
+                'transition-colors duration-150',
+                effects.length >= maxEffects
+                  ? 'bg-slate-700/40 text-slate-600 cursor-not-allowed'
+                  : 'bg-rose-500 text-slate-100 hover:bg-rose-400',
+                isMobile ? 'px-2 py-0.5 text-[0.7rem]' : 'px-2.5 py-1 text-[0.8rem]'
+              )}
+              whileHover={effects.length < maxEffects ? { scale: 1.05 } : undefined}
+              whileTap={effects.length < maxEffects ? { scale: 0.92 } : undefined}
+              transition={{ type: 'spring', stiffness: 500, damping: 25 }}
               title="Add effect"
             >
               +
-            </button>
+            </motion.button>
+
             {/* Add effect menu */}
-            {showAddMenu && (
-              <div
-                style={{
-                  position: 'absolute',
-                  top: '100%',
-                  right: 0,
-                  marginTop: 4,
-                  backgroundColor: 'var(--bg-secondary)',
-                  borderRadius: 4,
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
-                  zIndex: 100,
-                  overflow: 'hidden',
-                  minWidth: 100,
-                }}
-              >
-                {AVAILABLE_EFFECTS.map((effect) => (
-                  <button
-                    key={effect.type}
-                    onClick={() => handleAddEffect(effect.type)}
-                    style={{
-                      display: 'block',
-                      width: '100%',
-                      padding: isMobile ? '6px 10px' : '8px 12px',
-                      border: 'none',
-                      backgroundColor: 'transparent',
-                      color: 'var(--text-primary)',
-                      fontSize: isMobile ? '0.75rem' : '0.85rem',
-                      textAlign: 'left',
-                      cursor: 'pointer',
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = 'var(--bg-tertiary)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = 'transparent';
-                    }}
-                  >
-                    {effect.label}
-                  </button>
-                ))}
-              </div>
-            )}
+            <AnimatePresence>
+              {showAddMenu && (
+                <motion.div
+                  className={cn(
+                    'absolute top-full right-0 mt-1',
+                    'bg-slate-800/90 backdrop-blur-lg',
+                    'border border-slate-600/50',
+                    'rounded-lg shadow-xl shadow-black/40',
+                    'overflow-hidden',
+                    'z-[100] min-w-[100px]'
+                  )}
+                  initial={{ opacity: 0, y: -8, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -8, scale: 0.95 }}
+                  transition={{ duration: 0.15, ease: 'easeOut' }}
+                >
+                  {AVAILABLE_EFFECTS.map((effect) => (
+                    <motion.button
+                      key={effect.type}
+                      onClick={() => handleAddEffect(effect.type)}
+                      className={cn(
+                        'block w-full text-left',
+                        'text-slate-200',
+                        'transition-colors duration-100',
+                        'hover:bg-slate-700/80 hover:text-white',
+                        isMobile ? 'px-2.5 py-1.5 text-[0.75rem]' : 'px-3 py-2 text-[0.85rem]'
+                      )}
+                      whileHover={{ x: 2 }}
+                      transition={{ duration: 0.1 }}
+                    >
+                      {effect.label}
+                    </motion.button>
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </div>
       </div>
 
       {/* Effect slots */}
       <div
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '2px',
-          padding: isMobile ? '4px' : '6px',
-          minHeight: 60,
-          opacity: bypassed ? 0.5 : 1,
-        }}
+        className={cn(
+          'flex flex-col gap-0.5',
+          'min-h-[60px]',
+          'transition-opacity duration-200',
+          bypassed && 'opacity-50',
+          isMobile ? 'p-1' : 'p-1.5'
+        )}
       >
         {effects.length === 0 ? (
-          <div
-            style={{
-              padding: isMobile ? '12px' : '16px',
-              textAlign: 'center',
-              color: 'var(--text-secondary)',
-              fontSize: isMobile ? '0.75rem' : '0.85rem',
-            }}
+          <motion.div
+            className={cn(
+              'text-center text-slate-500',
+              isMobile ? 'py-3 text-[0.75rem]' : 'py-4 text-[0.85rem]'
+            )}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.1 }}
           >
             No effects - click + to add
-          </div>
+          </motion.div>
         ) : (
           effects.map((effect, index) => (
-            <div
+            <motion.div
               key={effect.id}
               onClick={() => setSelectedEffectId(effect.id === selectedEffectId ? null : effect.id)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                padding: isMobile ? '4px 6px' : '6px 8px',
-                backgroundColor:
-                  effect.id === selectedEffectId ? 'var(--bg-tertiary)' : 'var(--bg-secondary)',
-                borderRadius: 4,
-                cursor: 'pointer',
-                border:
-                  effect.id === selectedEffectId
-                    ? '1px solid var(--accent-primary)'
-                    : '1px solid transparent',
-                transition: 'background-color 0.1s ease, border-color 0.1s ease',
-              }}
+              className={cn(
+                'flex items-center gap-1.5',
+                'rounded-md cursor-pointer',
+                'transition-all duration-150',
+                effect.id === selectedEffectId
+                  ? 'bg-slate-700/70 border border-rose-500/50'
+                  : 'bg-slate-700/40 border border-transparent hover:bg-slate-700/60',
+                isMobile ? 'px-1.5 py-1' : 'px-2 py-1.5'
+              )}
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: index * 0.05 }}
+              whileHover={{ scale: 1.01 }}
             >
               {/* Effect number */}
               <span
-                style={{
-                  fontSize: isMobile ? '0.6rem' : '0.65rem',
-                  color: 'var(--text-secondary)',
-                  width: 14,
-                  textAlign: 'center',
-                }}
+                className={cn(
+                  'text-slate-500 text-center w-3.5',
+                  isMobile ? 'text-[0.6rem]' : 'text-[0.65rem]'
+                )}
               >
                 {index + 1}
               </span>
 
               {/* Enable/disable toggle */}
-              <button
+              <motion.button
                 onClick={(e) => {
                   e.stopPropagation();
                   handleToggleEffect(effect.id, !effect.enabled);
                 }}
-                style={{
-                  width: isMobile ? 18 : 20,
-                  height: isMobile ? 18 : 20,
-                  border: 'none',
-                  borderRadius: 3,
-                  cursor: 'pointer',
-                  backgroundColor: effect.enabled ? 'var(--success)' : 'var(--bg-tertiary)',
-                  color: effect.enabled ? 'var(--bg-primary)' : 'var(--text-secondary)',
-                  fontSize: isMobile ? '0.5rem' : '0.55rem',
-                  fontWeight: 700,
-                  flexShrink: 0,
-                }}
+                className={cn(
+                  'rounded flex-shrink-0',
+                  'flex items-center justify-center',
+                  'transition-colors duration-150',
+                  effect.enabled
+                    ? 'bg-green-500 text-slate-900'
+                    : 'bg-slate-600/60 text-slate-500',
+                  isMobile
+                    ? 'w-[18px] h-[18px] text-[0.5rem]'
+                    : 'w-5 h-5 text-[0.55rem]'
+                )}
+                whileHover={{ scale: 1.1 }}
+                whileTap={{ scale: 0.9 }}
+                transition={{ type: 'spring', stiffness: 500, damping: 25 }}
                 title={effect.enabled ? 'Disable' : 'Enable'}
               >
                 {effect.enabled ? '●' : '○'}
-              </button>
+              </motion.button>
 
               {/* Effect name */}
               <span
-                style={{
-                  flex: 1,
-                  fontSize: isMobile ? '0.7rem' : '0.8rem',
-                  fontWeight: 500,
-                  color: effect.enabled ? 'var(--text-primary)' : 'var(--text-secondary)',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                }}
+                className={cn(
+                  'flex-1 font-medium',
+                  'overflow-hidden text-ellipsis whitespace-nowrap',
+                  effect.enabled ? 'text-slate-200' : 'text-slate-500',
+                  isMobile ? 'text-[0.7rem]' : 'text-[0.8rem]'
+                )}
               >
                 {AVAILABLE_EFFECTS.find((e) => e.type === effect.type)?.label || effect.type}
               </span>
 
               {/* Move buttons */}
               <div
-                style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}
+                className="flex flex-col gap-px"
                 onClick={(e) => e.stopPropagation()}
               >
-                <button
+                <motion.button
                   onClick={() => handleMoveEffect(effect.id, 'up')}
                   disabled={index === 0}
-                  style={{
-                    width: isMobile ? 14 : 16,
-                    height: isMobile ? 10 : 12,
-                    border: 'none',
-                    borderRadius: 2,
-                    cursor: index === 0 ? 'not-allowed' : 'pointer',
-                    backgroundColor: 'var(--bg-tertiary)',
-                    color: 'var(--text-secondary)',
-                    fontSize: isMobile ? '0.5rem' : '0.55rem',
-                    opacity: index === 0 ? 0.3 : 0.7,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
+                  className={cn(
+                    'flex items-center justify-center',
+                    'rounded-sm bg-slate-600/40',
+                    'text-slate-500 transition-colors duration-100',
+                    index === 0
+                      ? 'opacity-30 cursor-not-allowed'
+                      : 'hover:bg-slate-600 hover:text-slate-300',
+                    isMobile
+                      ? 'w-3.5 h-2.5 text-[0.5rem]'
+                      : 'w-4 h-3 text-[0.55rem]'
+                  )}
+                  whileHover={index !== 0 ? { scale: 1.1 } : undefined}
+                  whileTap={index !== 0 ? { scale: 0.9 } : undefined}
                   title="Move up"
                 >
                   ▲
-                </button>
-                <button
+                </motion.button>
+                <motion.button
                   onClick={() => handleMoveEffect(effect.id, 'down')}
                   disabled={index === effects.length - 1}
-                  style={{
-                    width: isMobile ? 14 : 16,
-                    height: isMobile ? 10 : 12,
-                    border: 'none',
-                    borderRadius: 2,
-                    cursor: index === effects.length - 1 ? 'not-allowed' : 'pointer',
-                    backgroundColor: 'var(--bg-tertiary)',
-                    color: 'var(--text-secondary)',
-                    fontSize: isMobile ? '0.5rem' : '0.55rem',
-                    opacity: index === effects.length - 1 ? 0.3 : 0.7,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
+                  className={cn(
+                    'flex items-center justify-center',
+                    'rounded-sm bg-slate-600/40',
+                    'text-slate-500 transition-colors duration-100',
+                    index === effects.length - 1
+                      ? 'opacity-30 cursor-not-allowed'
+                      : 'hover:bg-slate-600 hover:text-slate-300',
+                    isMobile
+                      ? 'w-3.5 h-2.5 text-[0.5rem]'
+                      : 'w-4 h-3 text-[0.55rem]'
+                  )}
+                  whileHover={index !== effects.length - 1 ? { scale: 1.1 } : undefined}
+                  whileTap={index !== effects.length - 1 ? { scale: 0.9 } : undefined}
                   title="Move down"
                 >
                   ▼
-                </button>
+                </motion.button>
               </div>
 
               {/* Remove button */}
-              <button
+              <motion.button
                 onClick={(e) => {
                   e.stopPropagation();
                   handleRemoveEffect(effect.id);
                 }}
-                style={{
-                  width: isMobile ? 18 : 20,
-                  height: isMobile ? 18 : 20,
-                  border: 'none',
-                  borderRadius: 3,
-                  cursor: 'pointer',
-                  backgroundColor: 'transparent',
-                  color: 'var(--text-secondary)',
-                  fontSize: isMobile ? '0.8rem' : '0.9rem',
-                  flexShrink: 0,
-                }}
+                className={cn(
+                  'flex items-center justify-center flex-shrink-0',
+                  'rounded bg-transparent',
+                  'text-slate-500 transition-colors duration-150',
+                  'hover:bg-red-500/80 hover:text-white',
+                  isMobile
+                    ? 'w-[18px] h-[18px] text-[0.8rem]'
+                    : 'w-5 h-5 text-[0.9rem]'
+                )}
+                whileHover={{ scale: 1.1 }}
+                whileTap={{ scale: 0.9 }}
+                transition={{ type: 'spring', stiffness: 500, damping: 25 }}
                 title="Remove effect"
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = 'var(--error)';
-                  e.currentTarget.style.color = 'var(--text-primary)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = 'transparent';
-                  e.currentTarget.style.color = 'var(--text-secondary)';
-                }}
               >
                 ×
-              </button>
-            </div>
+              </motion.button>
+            </motion.div>
           ))
         )}
       </div>
 
       {/* Effect Editor Panel */}
-      {selectedEffect && (
-        <div
-          style={{
-            borderTop: '1px solid rgba(255,255,255,0.1)',
-            padding: isMobile ? '6px' : '8px',
-          }}
-        >
-          <EffectEditor
-            trackId={trackId}
-            effectId={selectedEffect.id}
-            effectType={selectedEffect.type}
-            parameters={selectedEffect.parameters}
-            enabled={selectedEffect.enabled}
-            onClose={() => setSelectedEffectId(null)}
-            onParameterChange={handleParameterChange}
-            onEnabledChange={() => syncEffects()}
-          />
-        </div>
-      )}
+      <AnimatePresence>
+        {selectedEffect && (
+          <motion.div
+            className={cn(
+              'border-t border-slate-700/50',
+              isMobile ? 'p-1.5' : 'p-2'
+            )}
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.2, ease: 'easeOut' }}
+          >
+            <EffectEditor
+              trackId={trackId}
+              effectId={selectedEffect.id}
+              effectType={selectedEffect.type}
+              parameters={selectedEffect.parameters}
+              enabled={selectedEffect.enabled}
+              onClose={() => setSelectedEffectId(null)}
+              onParameterChange={handleParameterChange}
+              onEnabledChange={() => syncEffects()}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Click outside to close menu */}
       {showAddMenu && (
         <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            zIndex: 99,
-          }}
+          className="fixed inset-0 z-[99]"
           onClick={() => setShowAddMenu(false)}
         />
       )}
-    </div>
+    </motion.div>
   );
 };
 

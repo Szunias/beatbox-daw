@@ -2,14 +2,18 @@
  * Channel Component
  * Single mixer channel with fader, pan, mute, solo, and VU meter
  * Connected to AudioEngine for real-time audio control
+ *
+ * Features modern glassmorphism design with Motion animations
  */
 
 import React, { useCallback, useState, useEffect } from 'react';
+import { motion } from 'motion/react';
 import { Track } from '../../types/project';
 import { useProjectStore } from '../../stores/projectStore';
 import { getAudioEngine } from '../../audio';
 import { VUMeter } from './VUMeter';
 import { EffectRack } from './EffectRack';
+import { cn } from '../../lib/utils';
 
 interface ChannelProps {
   track: Track;
@@ -54,12 +58,6 @@ export const Channel: React.FC<ChannelProps> = ({ track, level = 0, isMaster = f
   // Responsive sizing
   const channelWidth = isMobile ? 60 : (isMaster ? 90 : 80);
   const faderHeight = isMobile ? 80 : 120;
-  const fontSize = {
-    name: isMobile ? '0.7rem' : '0.8rem',
-    label: isMobile ? '0.6rem' : '0.7rem',
-    value: isMobile ? '0.65rem' : '0.75rem',
-    button: isMobile ? '0.6rem' : '0.7rem',
-  };
 
   const handleVolumeChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -102,114 +100,121 @@ export const Channel: React.FC<ChannelProps> = ({ track, level = 0, isMaster = f
   };
 
   return (
-    <div
-      className={`mixer-channel ${isSelected ? 'selected' : ''} ${isMaster ? 'master' : ''}`}
-      onClick={handleChannelClick}
+    <motion.div
+      className={cn(
+        'mixer-channel',
+        // Glassmorphism effect
+        'bg-slate-800/50 backdrop-blur-md',
+        'border rounded-lg',
+        isSelected
+          ? 'border-rose-500/60 shadow-lg shadow-rose-500/10'
+          : 'border-slate-700/50',
+        isMaster && 'bg-slate-800/70',
+        // Layout
+        'flex flex-col items-center',
+        'cursor-pointer',
+        'relative',
+        'shrink-0',
+        // Spacing
+        isMobile ? 'p-1.5 gap-1.5' : 'p-2.5 gap-2',
+        // Transitions
+        'transition-all duration-200 ease-out'
+      )}
       style={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        padding: isMobile ? '6px' : '10px',
-        gap: isMobile ? '6px' : '8px',
-        backgroundColor: isSelected ? 'var(--bg-tertiary)' : 'var(--bg-primary)',
-        borderRadius: 8,
         width: channelWidth,
         minWidth: channelWidth,
-        cursor: 'pointer',
-        border: isSelected ? '2px solid var(--accent-primary)' : '2px solid var(--bg-tertiary)',
-        transition: 'background-color 0.15s ease, border-color 0.15s ease',
-        flexShrink: 0,
-        position: 'relative',
       }}
+      onClick={handleChannelClick}
+      whileHover={{
+        scale: 1.02,
+        borderColor: 'rgba(244, 63, 94, 0.4)'
+      }}
+      transition={{ type: 'spring', stiffness: 400, damping: 25 }}
     >
       {/* Channel name */}
       <div
-        style={{
-          width: '100%',
-          textAlign: 'center',
-          fontSize: fontSize.name,
-          fontWeight: 600,
-          color: isMaster ? 'var(--accent-primary)' : 'var(--text-primary)',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-          padding: '2px 0',
-        }}
+        className={cn(
+          'w-full text-center font-semibold',
+          'overflow-hidden text-ellipsis whitespace-nowrap',
+          'py-0.5',
+          isMaster
+            ? 'text-rose-400'
+            : 'text-slate-100',
+          isMobile ? 'text-[0.7rem]' : 'text-[0.8rem]'
+        )}
         title={track.name}
       >
         {isMaster ? 'MASTER' : track.name}
       </div>
 
-      {/* Color indicator */}
+      {/* Color indicator with glow */}
       <div
+        className="w-full h-0.5 rounded-full"
         style={{
-          width: '100%',
-          height: 3,
           backgroundColor: track.color,
-          borderRadius: 2,
+          boxShadow: `0 0 8px ${track.color}40`,
         }}
       />
 
       {/* Mute/Solo buttons */}
       {!isMaster && (
-        <div style={{ display: 'flex', gap: '4px', width: '100%', justifyContent: 'center' }}>
-          <button
+        <div className="flex gap-1 w-full justify-center">
+          {/* Mute button */}
+          <motion.button
             onClick={(e) => {
               e.stopPropagation();
               handleMuteClick();
             }}
-            style={{
-              flex: 1,
-              maxWidth: 32,
-              height: isMobile ? 22 : 24,
-              border: 'none',
-              borderRadius: 4,
-              fontSize: fontSize.button,
-              fontWeight: 700,
-              cursor: 'pointer',
-              backgroundColor: track.muted ? 'var(--warning)' : 'var(--bg-tertiary)',
-              color: track.muted ? 'var(--bg-primary)' : 'var(--text-secondary)',
-              transition: 'background-color 0.1s ease',
-            }}
+            className={cn(
+              'flex-1 max-w-8 font-bold rounded',
+              'border border-transparent',
+              'transition-colors duration-150',
+              track.muted
+                ? 'bg-amber-500 text-slate-900 border-amber-400'
+                : 'bg-slate-700/60 text-slate-400 hover:bg-slate-700 hover:text-slate-300',
+              isMobile ? 'h-[22px] text-[0.6rem]' : 'h-6 text-[0.7rem]'
+            )}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.92 }}
+            transition={{ type: 'spring', stiffness: 500, damping: 25 }}
           >
             M
-          </button>
-          <button
+          </motion.button>
+
+          {/* Solo button */}
+          <motion.button
             onClick={(e) => {
               e.stopPropagation();
               handleSoloClick();
             }}
-            style={{
-              flex: 1,
-              maxWidth: 32,
-              height: isMobile ? 22 : 24,
-              border: 'none',
-              borderRadius: 4,
-              fontSize: fontSize.button,
-              fontWeight: 700,
-              cursor: 'pointer',
-              backgroundColor: track.solo ? 'var(--success)' : 'var(--bg-tertiary)',
-              color: track.solo ? 'var(--bg-primary)' : 'var(--text-secondary)',
-              transition: 'background-color 0.1s ease',
-            }}
+            className={cn(
+              'flex-1 max-w-8 font-bold rounded',
+              'border border-transparent',
+              'transition-colors duration-150',
+              track.solo
+                ? 'bg-green-500 text-slate-900 border-green-400'
+                : 'bg-slate-700/60 text-slate-400 hover:bg-slate-700 hover:text-slate-300',
+              isMobile ? 'h-[22px] text-[0.6rem]' : 'h-6 text-[0.7rem]'
+            )}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.92 }}
+            transition={{ type: 'spring', stiffness: 500, damping: 25 }}
           >
             S
-          </button>
+          </motion.button>
         </div>
       )}
 
       {/* Pan control */}
-      <div
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          gap: '3px',
-          width: '100%',
-          padding: '4px 0',
-        }}
-      >
-        <span style={{ fontSize: fontSize.label, color: 'var(--text-secondary)', fontWeight: 500 }}>PAN</span>
+      <div className="flex flex-col items-center gap-0.5 w-full py-1">
+        <span
+          className={cn(
+            'text-slate-500 font-medium',
+            isMobile ? 'text-[0.6rem]' : 'text-[0.7rem]'
+          )}
+        >
+          PAN
+        </span>
         <input
           type="range"
           min="-1"
@@ -220,31 +225,44 @@ export const Channel: React.FC<ChannelProps> = ({ track, level = 0, isMaster = f
           onClick={(e) => e.stopPropagation()}
           onDoubleClick={(e) => {
             e.stopPropagation();
-            setTrackPan(track.id, 0); // Reset to center
+            setTrackPan(track.id, 0);
           }}
+          className={cn(
+            'w-full cursor-pointer',
+            'appearance-none bg-transparent',
+            '[&::-webkit-slider-runnable-track]:h-1',
+            '[&::-webkit-slider-runnable-track]:rounded-full',
+            '[&::-webkit-slider-runnable-track]:bg-slate-700',
+            '[&::-webkit-slider-thumb]:appearance-none',
+            '[&::-webkit-slider-thumb]:w-3',
+            '[&::-webkit-slider-thumb]:h-3',
+            '[&::-webkit-slider-thumb]:rounded-full',
+            '[&::-webkit-slider-thumb]:bg-slate-300',
+            '[&::-webkit-slider-thumb]:mt-[-4px]',
+            '[&::-webkit-slider-thumb]:transition-all',
+            '[&::-webkit-slider-thumb]:duration-150',
+            '[&::-webkit-slider-thumb]:hover:bg-white',
+            '[&::-webkit-slider-thumb]:hover:scale-125',
+            isMobile ? 'h-5' : 'h-4'
+          )}
           style={{
-            width: '100%',
-            height: isMobile ? 20 : 8,
-            cursor: 'pointer',
             accentColor: isMaster ? 'var(--accent-primary)' : track.color,
           }}
         />
-        <span style={{ fontSize: fontSize.value, color: 'var(--text-primary)', fontFamily: 'monospace' }}>
+        <span
+          className={cn(
+            'text-slate-200 font-mono',
+            isMobile ? 'text-[0.65rem]' : 'text-[0.75rem]'
+          )}
+        >
           {formatPan(track.pan)}
         </span>
       </div>
 
       {/* VU Meter and Fader */}
       <div
-        style={{
-          display: 'flex',
-          gap: '8px',
-          alignItems: 'stretch',
-          flex: 1,
-          width: '100%',
-          justifyContent: 'center',
-          minHeight: faderHeight,
-        }}
+        className="flex gap-2 items-stretch flex-1 w-full justify-center"
+        style={{ minHeight: faderHeight }}
       >
         {/* VU Meter */}
         <VUMeter
@@ -255,13 +273,8 @@ export const Channel: React.FC<ChannelProps> = ({ track, level = 0, isMaster = f
 
         {/* Volume fader */}
         <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            height: faderHeight,
-          }}
+          className="flex flex-col items-center justify-center"
+          style={{ height: faderHeight }}
         >
           <input
             type="range"
@@ -273,14 +286,36 @@ export const Channel: React.FC<ChannelProps> = ({ track, level = 0, isMaster = f
             onClick={(e) => e.stopPropagation()}
             onDoubleClick={(e) => {
               e.stopPropagation();
-              setTrackVolume(track.id, 0.8); // Reset to default
+              setTrackVolume(track.id, 0.8);
             }}
+            className={cn(
+              'cursor-pointer',
+              'appearance-none bg-transparent',
+              '[&::-webkit-slider-runnable-track]:w-1',
+              '[&::-webkit-slider-runnable-track]:rounded-full',
+              '[&::-webkit-slider-runnable-track]:bg-gradient-to-t',
+              '[&::-webkit-slider-runnable-track]:from-slate-700',
+              '[&::-webkit-slider-runnable-track]:to-slate-600',
+              '[&::-webkit-slider-thumb]:appearance-none',
+              '[&::-webkit-slider-thumb]:w-6',
+              '[&::-webkit-slider-thumb]:h-2.5',
+              '[&::-webkit-slider-thumb]:rounded-sm',
+              '[&::-webkit-slider-thumb]:bg-gradient-to-b',
+              '[&::-webkit-slider-thumb]:from-slate-200',
+              '[&::-webkit-slider-thumb]:to-slate-400',
+              '[&::-webkit-slider-thumb]:shadow-md',
+              '[&::-webkit-slider-thumb]:transition-all',
+              '[&::-webkit-slider-thumb]:duration-100',
+              '[&::-webkit-slider-thumb]:hover:from-white',
+              '[&::-webkit-slider-thumb]:hover:to-slate-300',
+              '[&::-webkit-slider-thumb]:active:from-rose-200',
+              '[&::-webkit-slider-thumb]:active:to-rose-400'
+            )}
             style={{
               writingMode: 'vertical-lr',
               direction: 'rtl',
               width: faderHeight,
               height: isMobile ? 24 : 28,
-              cursor: 'pointer',
               accentColor: isMaster ? 'var(--accent-primary)' : track.color,
             }}
           />
@@ -289,67 +324,65 @@ export const Channel: React.FC<ChannelProps> = ({ track, level = 0, isMaster = f
 
       {/* Volume dB display */}
       <div
-        style={{
-          backgroundColor: 'var(--bg-tertiary)',
-          padding: isMobile ? '3px 6px' : '4px 8px',
-          borderRadius: 4,
-          fontSize: fontSize.value,
-          fontFamily: 'monospace',
-          color: 'var(--text-primary)',
-          fontWeight: 500,
-          minWidth: isMobile ? 40 : 48,
-          textAlign: 'center',
-        }}
+        className={cn(
+          'bg-slate-900/70 backdrop-blur-sm',
+          'border border-slate-700/50',
+          'rounded font-mono font-medium',
+          'text-center text-slate-100',
+          isMobile
+            ? 'px-1.5 py-0.5 text-[0.65rem] min-w-10'
+            : 'px-2 py-1 text-[0.75rem] min-w-12'
+        )}
       >
         {formatVolumeDb(track.volume)}
       </div>
 
       {/* FX Button - opens Effect Rack */}
       {!isMaster && (
-        <button
+        <motion.button
           onClick={(e) => {
             e.stopPropagation();
             setShowEffectRack(!showEffectRack);
           }}
-          style={{
-            width: '100%',
-            height: isMobile ? 22 : 24,
-            border: 'none',
-            borderRadius: 4,
-            fontSize: fontSize.button,
-            fontWeight: 700,
-            cursor: 'pointer',
-            backgroundColor: showEffectRack ? 'var(--accent-primary)' : 'var(--bg-tertiary)',
-            color: showEffectRack ? 'var(--bg-primary)' : 'var(--text-secondary)',
-            transition: 'background-color 0.1s ease',
-          }}
+          className={cn(
+            'w-full font-bold rounded',
+            'border border-transparent',
+            'transition-colors duration-150',
+            showEffectRack
+              ? 'bg-rose-500 text-slate-900 border-rose-400'
+              : 'bg-slate-700/60 text-slate-400 hover:bg-slate-700 hover:text-slate-300',
+            isMobile ? 'h-[22px] text-[0.6rem]' : 'h-6 text-[0.7rem]'
+          )}
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.95 }}
+          transition={{ type: 'spring', stiffness: 500, damping: 25 }}
           title="Toggle Effect Rack"
         >
           FX
-        </button>
+        </motion.button>
       )}
 
       {/* Effect Rack - shown when FX button is clicked */}
       {!isMaster && showEffectRack && (
-        <div
+        <motion.div
           onClick={(e) => e.stopPropagation()}
-          style={{
-            position: 'absolute',
-            top: '100%',
-            left: 0,
-            marginTop: 4,
-            zIndex: 100,
-            boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
-          }}
+          className={cn(
+            'absolute top-full left-0 mt-1 z-[100]',
+            'shadow-xl shadow-black/40'
+          )}
+          initial={{ opacity: 0, y: -8, scale: 0.95 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: -8, scale: 0.95 }}
+          transition={{ duration: 0.15, ease: 'easeOut' }}
         >
           <EffectRack
             trackId={track.id}
             trackColor={track.color}
             maxEffects={4}
           />
-        </div>
+        </motion.div>
       )}
-    </div>
+    </motion.div>
   );
 };
 
