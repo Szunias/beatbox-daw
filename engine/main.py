@@ -1539,6 +1539,7 @@ class WebSocketServer:
 
         elif msg_type == 'set_bpm':
             bpm = payload.get('bpm', 120)
+            print(f"BPM set to: {bpm}")
             self.engine.transport.bpm = bpm
             if self.engine._project:
                 self.engine._project.bpm = bpm
