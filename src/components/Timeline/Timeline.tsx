@@ -59,8 +59,13 @@ interface TimelineProps {
 
 export const Timeline: React.FC<TimelineProps> = ({ height = 400 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const tracksAreaRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(800);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+
+  // Hover cursor state for mouse position tracking
+  const [hoverCursorX, setHoverCursorX] = useState<number>(0);
+  const [isHovering, setIsHovering] = useState<boolean>(false);
 
   const trackHeaderWidth = isMobile ? trackHeaderWidth_MOBILE : trackHeaderWidth_DESKTOP;
 
@@ -178,6 +183,27 @@ export const Timeline: React.FC<TimelineProps> = ({ height = 400 }) => {
     },
     [addTrack]
   );
+
+  // Handle mouse move over tracks area for hover cursor
+  const handleTracksMouseMove = useCallback(
+    (e: React.MouseEvent) => {
+      if (!tracksAreaRef.current) return;
+      const rect = tracksAreaRef.current.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      setHoverCursorX(x);
+    },
+    []
+  );
+
+  // Handle mouse enter tracks area
+  const handleTracksMouseEnter = useCallback(() => {
+    setIsHovering(true);
+  }, []);
+
+  // Handle mouse leave tracks area
+  const handleTracksMouseLeave = useCallback(() => {
+    setIsHovering(false);
+  }, []);
 
   const tracksAreaHeight = height - TIME_RULER_HEIGHT;
   const totalTracksHeight = project.tracks.length * TRACK_HEIGHT;
@@ -306,6 +332,7 @@ export const Timeline: React.FC<TimelineProps> = ({ height = 400 }) => {
 
         {/* Tracks area */}
         <div
+          ref={tracksAreaRef}
           style={{
             flex: 1,
             position: 'relative',
@@ -313,6 +340,9 @@ export const Timeline: React.FC<TimelineProps> = ({ height = 400 }) => {
           }}
           onWheel={handleWheel}
           onClick={handleTimelineClick}
+          onMouseMove={handleTracksMouseMove}
+          onMouseEnter={handleTracksMouseEnter}
+          onMouseLeave={handleTracksMouseLeave}
         >
           {/* Tracks */}
           <div
@@ -354,6 +384,9 @@ export const Timeline: React.FC<TimelineProps> = ({ height = 400 }) => {
 
           {/* Playhead */}
           <Playhead height={tracksAreaHeight} containerWidth={containerWidth} />
+
+          {/* Hover cursor */}
+          <HoverCursor x={hoverCursorX} height={tracksAreaHeight} visible={isHovering} />
 
           {/* Recording overlay */}
           {isRecording && (
