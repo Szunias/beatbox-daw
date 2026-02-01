@@ -102,8 +102,21 @@ class Transport:
 
     @bpm.setter
     def bpm(self, value: float):
-        """Set BPM (20-300 range)."""
-        self.config.bpm = max(20.0, min(300.0, value))
+        """Set BPM (20-300 range). Recalibrates timing if playback is active."""
+        new_bpm = max(20.0, min(300.0, value))
+
+        # If playing or recording, recalibrate timing to prevent position jumps
+        if self._state in (TransportState.PLAYING, TransportState.RECORDING) and self._start_time is not None:
+            # Capture current position using OLD BPM before changing
+            current_tick = self.current_tick
+
+            # Update reference point to current position
+            self._start_tick = current_tick
+            self._start_time = time.perf_counter()
+
+            print(f"Transport: BPM changed from {self.config.bpm} to {new_bpm} at tick {current_tick}")
+
+        self.config.bpm = new_bpm
 
     @property
     def ticks_per_beat(self) -> int:
