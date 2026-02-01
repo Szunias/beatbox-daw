@@ -100,8 +100,12 @@ interface QueuedCommand {
 }
 
 export function useWebSocket(url: string = import.meta.env.VITE_WS_URL || 'ws://localhost:8765'): UseWebSocketReturn {
+  // Check if WebSocket URL is empty - if so, start in demo mode immediately
+  const wsUrl = url?.trim() || '';
+  const skipConnection = wsUrl === '';
+
   const [isConnected, setIsConnected] = useState(false);
-  const [isDemoMode, setIsDemoMode] = useState(false);
+  const [isDemoMode, setIsDemoMode] = useState(skipConnection);
   const [status, setStatus] = useState<EngineStatus | null>(null);
   const [audioLevel, setAudioLevel] = useState(0);
   const [recentEvents, setRecentEvents] = useState<DrumEvent[]>([]);
@@ -150,6 +154,12 @@ export function useWebSocket(url: string = import.meta.env.VITE_WS_URL || 'ws://
   }, []);
 
   const connect = useCallback(() => {
+    // If WebSocket URL is empty, skip connection and stay in demo mode
+    if (skipConnection) {
+      setIsDemoMode(true);
+      return;
+    }
+
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       return;
     }
@@ -162,13 +172,12 @@ export function useWebSocket(url: string = import.meta.env.VITE_WS_URL || 'ws://
     // Set demo mode timeout - if no connection after 3 seconds, enable demo mode
     demoModeTimeoutRef.current = window.setTimeout(() => {
       if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-        console.log('Backend unavailable, switching to demo mode');
         setIsDemoMode(true);
       }
     }, DEMO_MODE_TIMEOUT);
 
     try {
-      const ws = new WebSocket(url);
+      const ws = new WebSocket(wsUrl);
 
       ws.onopen = () => {
         setIsConnected(true);
@@ -232,7 +241,7 @@ export function useWebSocket(url: string = import.meta.env.VITE_WS_URL || 'ws://
         }, delay);
       }
     }
-  }, [url, flushCommandQueue, getReconnectDelay]);
+  }, [wsUrl, skipConnection, flushCommandQueue, getReconnectDelay]);
 
   const disconnect = useCallback(() => {
     if (reconnectTimeoutRef.current !== null) {
