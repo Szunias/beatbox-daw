@@ -43,17 +43,14 @@ export const Timeline: React.FC<TimelineProps> = ({ height = 400 }) => {
     const items: MenuItem[] = [
       {
         label: 'Add Drum Track',
-        icon: '🥁',
         onClick: () => addTrack('drum'),
       },
       {
         label: 'Add MIDI Track',
-        icon: '🎹',
         onClick: () => addTrack('midi'),
       },
       {
         label: 'Add Audio Track',
-        icon: '🎵',
         onClick: () => addTrack('audio'),
       },
     ];
@@ -63,7 +60,6 @@ export const Timeline: React.FC<TimelineProps> = ({ height = 400 }) => {
       items.push({ label: '', onClick: () => {}, divider: true });
       items.push({
         label: 'Delete Track',
-        icon: '🗑️',
         onClick: () => {
           removeTrack(selectedTrackId);
         },
@@ -73,7 +69,6 @@ export const Timeline: React.FC<TimelineProps> = ({ height = 400 }) => {
     items.push({ label: '', onClick: () => {}, divider: true });
     items.push({
       label: 'Stop Playback',
-      icon: '⏹️',
       onClick: () => stop(),
     });
 
