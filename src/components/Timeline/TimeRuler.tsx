@@ -195,6 +195,7 @@ export const TimeRuler: React.FC<TimeRulerProps> = ({ width, height = 30 }) => {
       className="time-ruler"
       style={{ width, height, position: 'relative', cursor: 'pointer' }}
       onMouseDown={handleMouseDown}
+      title="Click to seek • Shift+drag to set loop region"
     >
       <svg width={width} height={height}>
         {/* Background */}
