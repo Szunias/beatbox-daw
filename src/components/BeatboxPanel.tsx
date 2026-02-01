@@ -142,24 +142,40 @@ export const BeatboxPanel: React.FC = () => {
               style={{
                 padding: '2px 8px',
                 borderRadius: 4,
-                backgroundColor: 'rgba(251, 191, 36, 0.2)',
-                color: 'var(--warning)',
-                fontSize: '0.7rem',
-                fontWeight: 600,
+                backgroundColor: 'rgba(100, 100, 100, 0.2)',
+                color: 'var(--text-secondary)',
+                fontSize: '0.65rem',
+                fontWeight: 500,
               }}
             >
-              DEMO
+              Offline
             </span>
           ) : (
             <span
-              className={`status-dot ${isConnected ? 'connected' : ''}`}
               style={{
-                width: 8,
-                height: 8,
-                borderRadius: '50%',
-                backgroundColor: isConnected ? 'var(--success)' : 'var(--error)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                padding: '2px 8px',
+                borderRadius: 4,
+                backgroundColor: isConnected
+                  ? 'rgba(34, 197, 94, 0.15)'
+                  : 'rgba(239, 68, 68, 0.15)',
+                fontSize: '0.65rem',
+                fontWeight: 500,
+                color: isConnected ? 'var(--success)' : 'var(--error)',
               }}
-            />
+            >
+              <span
+                style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: '50%',
+                  backgroundColor: isConnected ? 'var(--success)' : 'var(--error)',
+                }}
+              />
+              {isConnected ? 'Connected' : 'Disconnected'}
+            </span>
           )}
         </div>
         {targetTrack && !isDemoMode && (
@@ -357,19 +373,19 @@ export const BeatboxPanel: React.FC = () => {
         </div>
       )}
 
-      {/* Demo mode notice */}
+      {/* Offline mode notice */}
       {isDemoMode && (
         <div
           style={{
-            padding: '8px',
-            backgroundColor: 'rgba(251, 191, 36, 0.1)',
+            padding: '6px 8px',
+            backgroundColor: 'rgba(100, 100, 100, 0.1)',
             borderRadius: 4,
-            fontSize: '0.8rem',
-            color: 'var(--warning)',
+            fontSize: '0.75rem',
+            color: 'var(--text-secondary)',
             textAlign: 'center',
           }}
         >
-          Demo Mode: Backend unavailable. Download the desktop app for full beatbox detection.
+          Backend offline. Start the Python engine for live beatbox detection.
         </div>
       )}
     </div>
