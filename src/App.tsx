@@ -221,7 +221,7 @@ const App: React.FC = () => {
                 REC
               </div>
             )}
-            {isDemoMode && (
+            {isDemoMode && !isConnected && (
               <div
                 style={{
                   padding: '4px 10px',
@@ -252,7 +252,7 @@ const App: React.FC = () => {
             </button>
             <div className="status-indicator">
               <span className={`status-dot ${isConnected ? 'connected' : ''}`} />
-              {isDemoMode ? 'Demo Mode' : isConnected ? 'Engine Connected' : 'Connecting...'}
+              {isConnected ? 'Engine Connected' : isDemoMode ? 'Demo Mode' : 'Connecting...'}
             </div>
           </div>
         </header>
