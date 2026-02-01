@@ -15,6 +15,39 @@ import { TICKS_PER_BEAT } from '../../types/project';
 import { ContextMenu, MenuItem } from '../ContextMenu';
 import { useContextMenu } from '../../hooks/useContextMenu';
 
+/**
+ * HoverCursor Component
+ * Displays a semi-transparent vertical line at the mouse hover position on the timeline
+ */
+interface HoverCursorProps {
+  x: number;
+  height: number;
+  visible: boolean;
+}
+
+const HoverCursor: React.FC<HoverCursorProps> = ({ x, height, visible }) => {
+  if (!visible) return null;
+
+  // Don't render if outside visible area
+  if (x < 0) return null;
+
+  return (
+    <div
+      className="hover-cursor"
+      style={{
+        position: 'absolute',
+        left: x,
+        top: 0,
+        height,
+        width: 1,
+        backgroundColor: 'rgba(255, 255, 255, 0.3)',
+        pointerEvents: 'none',
+        zIndex: 50,
+      }}
+    />
+  );
+};
+
 const trackHeaderWidth_DESKTOP = 180;
 const trackHeaderWidth_MOBILE = 70;
 const TRACK_HEIGHT = 70;
