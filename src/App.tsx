@@ -67,9 +67,9 @@ const App: React.FC = () => {
   // Subscribe to transport position updates from backend
   useEffect(() => {
     const unsubscribe = onTransportPosition((position) => {
-      // Sync playhead position from backend
+      // Sync playhead position and BPM from backend
       const backendState = position.state as 'stopped' | 'playing' | 'paused' | 'recording';
-      syncFromBackend(position.tick, backendState);
+      syncFromBackend(position.tick, backendState, position.bpm);
     });
     return unsubscribe;
   }, [onTransportPosition, syncFromBackend]);
