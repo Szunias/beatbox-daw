@@ -257,6 +257,21 @@ export const TimeRuler: React.FC<TimeRulerProps> = ({ width, height = 30 }) => {
           stroke="rgba(255,255,255,0.1)"
           strokeWidth={1}
         />
+
+        {/* Visual hint for loop selection when no loop is set */}
+        {!loopRegion.enabled && !isDragging && (
+          <text
+            x={width - 8}
+            y={height / 2 + 4}
+            fill="var(--text-secondary)"
+            fontSize={9}
+            fontStyle="italic"
+            opacity={0.5}
+            textAnchor="end"
+          >
+            Shift+drag for loop
+          </text>
+        )}
       </svg>
     </div>
   );
