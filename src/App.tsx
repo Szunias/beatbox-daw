@@ -104,8 +104,11 @@ const App: React.FC = () => {
     tickRef.current = currentTick;
   }, [currentTick]);
 
-  // Playback position update loop
+  // Playback position update loop - only used when NOT connected to backend
+  // When connected, backend sends position updates via WebSocket
   useEffect(() => {
+    // Skip local playback loop if connected to backend - backend handles position
+    if (isConnected) return;
     if (transportState !== 'playing' && transportState !== 'recording') return;
 
     let animationFrameId: number;
@@ -128,7 +131,7 @@ const App: React.FC = () => {
     return () => {
       cancelAnimationFrame(animationFrameId);
     };
-  }, [transportState, project.bpm, setCurrentTick]);
+  }, [transportState, project.bpm, setCurrentTick, isConnected]);
 
   // Keyboard shortcuts
   useEffect(() => {

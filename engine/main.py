@@ -1427,8 +1427,16 @@ class WebSocketServer:
         elif msg_type == 'set_audio_device':
             device_id = payload.get('device_id')
             device_type = payload.get('type', 'input')
-            if device_type == 'input' and device_id is not None:
-                success = self.engine.audio_capture.set_device(device_id)
+            if device_id is not None:
+                if device_type == 'input':
+                    success = self.engine.audio_capture.set_device(device_id)
+                elif device_type == 'output':
+                    success = self.engine.set_audio_output_device(device_id)
+                else:
+                    return {'type': 'set_audio_device_response', 'data': {
+                        'success': False,
+                        'error': f'Invalid device type: {device_type}'
+                    }}
                 return {'type': 'set_audio_device_response', 'data': {
                     'success': success,
                     'device_id': device_id,
@@ -1436,7 +1444,7 @@ class WebSocketServer:
                 }}
             return {'type': 'set_audio_device_response', 'data': {
                 'success': False,
-                'error': 'Invalid device configuration'
+                'error': 'device_id is required'
             }}
 
         # === DAW Transport Commands ===
