@@ -265,6 +265,7 @@ class BeatBoxDawEngine:
         """Process incoming audio buffer for beatbox detection and recording."""
         # Feed audio to AudioRecorder if track recording is active
         if self._audio_recording_active:
+            print(f"[Recording] Audio buffer added: {len(audio)} samples, max amplitude: {np.abs(audio).max():.4f}")
             self.audio_recorder.add_audio_buffer(audio)
 
         if self.state != EngineState.RUNNING:
@@ -1117,13 +1118,10 @@ class BeatBoxDawEngine:
         self._recording_track_id = track_id
         self._audio_recording_active = True
 
-        # Ensure audio capture is running and feeding to recorder
-        # Note: _audio_callback already handles recording when _audio_recording_active is True
-        # Only add _track_recording_callback if _audio_callback is NOT registered
-        # to avoid duplicate audio data being recorded
+        # Ensure audio capture is running and _audio_callback is registered
+        # _audio_callback handles recording when _audio_recording_active is True (line 266-268)
         if self._audio_callback not in self.audio_capture.callbacks:
-            if self._track_recording_callback not in self.audio_capture.callbacks:
-                self.audio_capture.add_callback(self._track_recording_callback)
+            self.audio_capture.add_callback(self._audio_callback)
 
         if not self.audio_capture.is_running:
             self.audio_capture.start()
@@ -1150,9 +1148,8 @@ class BeatBoxDawEngine:
         # Stop audio recording
         metadata = self.audio_recorder.stop_recording()
 
-        # Remove recording callback
-        if self._track_recording_callback in self.audio_capture.callbacks:
-            self.audio_capture.remove_callback(self._track_recording_callback)
+        # Note: _audio_callback stays registered - it handles multiple purposes
+        # and only records when _audio_recording_active is True
 
         track_id = self._recording_track_id
         self._recording_track_id = None
@@ -1542,6 +1539,7 @@ class WebSocketServer:
 
         elif msg_type == 'set_bpm':
             bpm = payload.get('bpm', 120)
+            print(f"BPM set to: {bpm}")
             self.engine.transport.bpm = bpm
             if self.engine._project:
                 self.engine._project.bpm = bpm

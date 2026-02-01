@@ -1,25 +1,25 @@
 {
   "active": true,
-  "spec": "005-napraw-bo-nie-da-sie-zmienic-bpm-jak-sie-kursorem-",
+  "spec": "006-problem-polega-na-tym-ze-mimo-twoich-ostatnich-zmi",
   "state": "building",
   "subtasks": {
-    "completed": 7,
-    "total": 11,
+    "completed": 8,
+    "total": 20,
     "in_progress": 1,
     "failed": 0
   },
   "phase": {
-    "current": "Loop Region UX Improvements",
+    "current": "Loop Region Interaction",
     "id": null,
-    "total": 3
+    "total": 4
   },
   "workers": {
     "active": 0,
     "max": 1
   },
   "session": {
-    "number": 8,
-    "started_at": "2026-02-01T18:51:23.843141"
+    "number": 9,
+    "started_at": "2026-02-01T19:55:38.972537"
   },
-  "last_update": "2026-02-01T19:05:13.308008"
+  "last_update": "2026-02-01T20:16:36.050742"
 }
